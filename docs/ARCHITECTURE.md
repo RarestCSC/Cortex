@@ -135,9 +135,10 @@ This tool result included an image that was omitted because image input is turne
 2. **`sends_thinking_effort()` 为菜单与出站的单一判定**（乙 A2），`is_reasoning_model()` 与 `openai_reasoning_for_model()` 语义不变（乙 §8.1）。`is_reasoning_model()` 有 10 个生产调用点，其中 2 处语义与档位菜单无关 ⇒ 不要改
 3. **端点声明了但不含某档时用它声明过的词兜底，唯独 `Off` 在端点无「关」的词时省略字段**（丙 ②）；**默认档 = `Off`（支持关闭时）或最低档**，菜单只显示实际声明档位，无数据才回退固定五档；不支持 `Off` 的模型菜单不出现 `Off`，遗留值落到最低档。`accepts` 是 `openai_reasoning_effort_for_endpoint` 内的局部闭包，不是独立函数
 4. **权威值契约**：`update_custom_provider` 不再兜底继承 `supports_vision`/`reasoning`，入参即权威（甲 §7.1、丙 D5-b）
-5. **`catalog_provider_id` 现在作为可信 canonical 别名参与查找**（Phase 1）：`custom_lite-gpt` + `catalog_provider_id: "openai"` 会解析 `openai/gpt-6-luna`；端点自己声明的 context/effort 仍然优先。未设置别名时仍走名字启发式。✅ 已验证（`cortex-provider-types` 682/0、`cortex --lib` 2295/0）
+5. **`catalog_provider_id` 现在作为可信 canonical 别名参与查找**（Phase 1）：`custom_lite-gpt` + `catalog_provider_id: "openai"` 会解析 `openai/gpt-6-luna`；端点自己声明的 context/effort 仍然优先。未设置别名时仍走名字启发式。✅ 已验证（`cortex-provider-types` 682/0、`cortex --lib` 2296/0）
 6. **Rust 改动要批量**——改一个字符串触发 release 增量 12m39s（级联 cortex→cortex-mcp→cortex-cli＋链接 290MB）
 7. **剥图占位文案已诚实化**：`model does not support vision` → `image input is turned off for this model`，三处 format 层各一份且被测试断言（`BUG-REPORT-custom-provider-vision.md` §7 附带项）
+8. **`session/load` 不同步启动扩展**：`prepare_acp_session_agent` 在后台预热扩展；stdio MCP（如 `context7` 的 npx）不再阻塞历史会话加载。代价是 `LoadSessionResponse` 不再带 `extensionResults`，扩展失败仍写日志
 
 ---
 
@@ -147,13 +148,13 @@ This tool result included an image that was omitted because image input is turne
 |--------|------|------|
 | `cortex-provider-types` | `cargo test -p cortex-provider-types --lib` | **682 passed / 0 failed**（+12：context / 档位 / canonical 词表） |
 | `cortex-providers` | `cargo test -p cortex-providers --lib` | **272 passed / 0 failed**（+2：relay context 解析） |
-| `cortex --lib` | `cargo test -p cortex --lib --features scheduler,acp-http,tree-sitter,code-mode,platform-apps,chat-recall,rustls-tls` | **2295 passed / 0 failed**（旧命令的 8 个失败已全部修复：feature 集 + HOME 隔离） |
+| `cortex --lib` | `cargo test -p cortex --lib --features scheduler,acp-http,tree-sitter,code-mode,platform-apps,chat-recall,rustls-tls` | **2296 passed / 0 failed**（旧命令的 8 个失败已全部修复：feature 集 + HOME 隔离） |
 | `cortex-cli --lib` | `cargo test -p cortex-cli --lib` | **353 passed / 0 failed / 1 ignored**（P1-8 已修；logging 测试现在会清 `GOOSE_PATH_ROOT`） |
 | ACP 集成测试 | 8 个 `acp_*_test.rs` + `session_id_propagation_test` + `custom_provider_command_auth_test` + `declared_vision_registry` = **11 个测试二进制** | **11/11 全绿**（全量重跑：3+3+21+2+13+1+59+35+4+2+1） |
 | UI TypeScript | `cd ui/desktop && node ../node_modules/typescript/bin/tsc --noEmit` | 干净 |
-| UI Vitest | `cd ui/desktop && pnpm run test` | **1013 passed / 0 failed / 8 skipped**（21 个测试侧失败已修） |
+| UI Vitest | `cd ui/desktop && pnpm run test` | **1014 passed / 0 failed / 8 skipped**（21 个测试侧失败已修） |
 | 死类扫描 | `cd ui/desktop && bash scripts/check-dead-classes.sh` | 520 个源文件 → **0**（`SCANNED_FILES=520 TOTAL=0 KINDS=0 FILES_AFFECTED=0`，本地与 GitHub Actions 双绿） |
 
-> ⚠️ **口径提醒**：上表 `cortex --lib` 的 2295 只覆盖该 crate 的 lib 测试，**不含** `cortex-cli --lib`（353/0）、UI vitest（1013/0/8）与 11 个 ACP 测试二进制。各层均已分别全绿；旧命令的 8 个失败是测试环境问题（feature 集 + HOME 隔离），不是产品回归，已修复并验证。
+> ⚠️ **口径提醒**：上表 `cortex --lib` 的 2296 只覆盖该 crate 的 lib 测试，**不含** `cortex-cli --lib`（353/0）、UI vitest（1014/0/8）与 11 个 ACP 测试二进制。各层均已分别全绿；旧命令的 8 个失败是测试环境问题（feature 集 + HOME 隔离），不是产品回归，已修复并验证。
 
 > **注意**：`cargo clippy --all-targets -- -D warnings` 在本分支跑不通（feature 门控 + 改名遗留），三轮均沿用可行写法：`-p <crate>` 分开 + `--features scheduler,acp-http` + `-A dead_code`。

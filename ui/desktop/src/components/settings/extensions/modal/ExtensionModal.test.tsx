@@ -257,7 +257,7 @@ describe('ExtensionModal', () => {
     expect(submittedData.headers).toEqual([
       { key: 'Authorization', value: 'Bearer abc123', isEdited: true },
     ]);
-  });
+  }, 15000);
 
   describe('pending env var capture (fix for #8969)', () => {
     beforeEach(() => {

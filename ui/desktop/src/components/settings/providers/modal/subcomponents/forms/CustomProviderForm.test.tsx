@@ -198,7 +198,7 @@ describe('CustomProviderForm transitions', () => {
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce());
     expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ engine: expectedEngine }));
-  });
+  }, 15000);
 
   it('clears form validation when returning to the setup choice', async () => {
     const user = userEvent.setup();

@@ -161,7 +161,7 @@ export GOOSE_PATH_ROOT=/tmp/opencode/<your-dir>
 ```
 - `cargo clippy --all-targets -- -D warnings` 在本分支跑不通（feature 门控 + 改名遗留），可行写法：`-p <crate>` 分开 + `--features scheduler,acp-http` + `-A dead_code`
   - 时间线：`refactor-plan.md` §4④（2026-10-15）曾全绿（`CLIPPY_EXIT=0`，6m58s）；2026-10-17 又跑不通 ⇒ 状态反转源自改名引入的 feature 门控，**以当前实测为准**
-- UI 全量 `pnpm run test` 是 **1013 passed / 0 failed / 8 skipped**（App/Hub 夹具与 CustomProviderForm 超时已修）
+- UI 全量 `pnpm run test` 是 **1014 passed / 0 failed / 8 skipped**（App/Hub 夹具、CustomProviderForm 与 ExtensionModal 慢用例已修）
 - ⚠️ **Vite 生产构建会 mangle 标识符**，grep 压缩后的 asar 找组件名不可靠（`StartupSplash` 在生产包中 0 命中）；判二进制是否过期要用 `find crates -name '*.rs' -newer <bin>`
 
 ### 3.5 不可过度宣称（`refactor-plan.md` §2 / `audit.md` §2）

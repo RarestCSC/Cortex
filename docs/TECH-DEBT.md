@@ -100,7 +100,8 @@ cd ui/desktop && bash scripts/check-dead-classes.sh
 | `providers::gcpauth` ×3 | 同上，JWT 签发/刷新需要 CryptoProvider | **测试侧已修**：补 `rustls-tls`（已验证） |
 | `ComposerModelPopover.test.tsx` | 断言面板高 210px（旧冻结高度行为） | jsdom 下 `maxHeight=520` 恒定，需更新断言。⚠️ **该测试长期未被执行，因为验证清单不含 `settings/models` 目录** |
 | `providers::gemini_cli::tests::initial_prompt_is_sent_on_stdin` | 某一轮全量跑失败过一次，单独跑 4/4 通过 | ✅ **已修（2026-10-18）**：读取改为 5s 轮询（shim 写文件与退出存在竞态），见 `TECH-DEBT` §5 |
-| `CustomProviderForm.test.tsx` 的 `does not carry credentials…` / `clears secrets…` | 各耗时 ~4.4~5.0s，**默认 5s 预算顶掉**（非断言失败） | 给两个用例传 `15000`（或该文件设 `testTimeout`） |
+| `CustomProviderForm.test.tsx` 的 `does not carry credentials…` / `clears secrets…` / `it.each` 参数化用例 | 各耗时 ~4.4~5.0s，**默认 5s 预算顶掉**（非断言失败） | 已传 `15000`（2026-10-18） |
+| `ExtensionModal.test.tsx` > `creates a http_streamable extension` | 全量负载下 ~5s 假失败 | 已传 `15000`（2026-10-18） |
 | ✅ `session_naming` 的 3 例新回归测试 | 历史上因 `debug/` 目录消失未运行 | **已完成**：现有 debug lib 测试二进制定点跑 3/0（`test_collect_title_candidates_*`）；无需 release profile |
 | `App.test.tsx` ×5 / `Hub.test.tsx` ×14 | mock 缺 `acpListRecentSessions` 导出 / 渲染 `Hub` 时缺 `<Router>` | 测试侧修复：补 mock 导出、包 `MemoryRouter` |
 
@@ -175,16 +176,16 @@ cd ui/desktop && bash scripts/check-dead-classes.sh
 
 | 项目 | 原记录 | 第六轮验证 |
 |------|--------|------------|
-| `cortex --lib` 失败数 | 16 → 8 | **0**（新 feature 集 **2295/0**） |
+| `cortex --lib` 失败数 | 16 → 8 | **0**（新 feature 集 **2296/0**） |
 | `cortex-provider-types` 测试数 | 669 | **682**（+12：context / 档位 / canonical 词表） |
 | `cortex-providers` | 269 | **272**（+2：relay context 解析） |
-| UI 全量测试 | 丙报「13 passed」 | **1013 passed / 0 failed / 8 skipped** |
+| UI 全量测试 | 丙报「13 passed」 | **1014 passed / 0 failed / 8 skipped** |
 | ACP 集成测试 | D6 阻塞全灭 | **11 个二进制 11/11 全绿**（全量重跑） |
 | `cortex-cli --lib` | 未记录 | **353 passed / 0 failed / 1 ignored** |
 | 死类扫描 | 511/119/71（含假阳性） | **394/85/60 → 0**（本地 + CI 双绿） |
 
 > **教训**：三轮只跑 `--lib` 从没跑 `--test`，导致陈旧断言存活至今。验收必须带全 feature 且跑集成测试。
-> ⚠️ **口径提醒**：`cortex --lib` 的 **2295** 只覆盖该 crate 的 lib 测试，不含 `cortex-cli --lib`（353/0）、UI vitest（1013/0/8）与 11 个 ACP 二进制；各层已分别全绿，不可相加成一个「全仓库通过率」。
+> ⚠️ **口径提醒**：`cortex --lib` 的 **2296** 只覆盖该 crate 的 lib 测试，不含 `cortex-cli --lib`（353/0）、UI vitest（1014/0/8）与 11 个 ACP 二进制；各层已分别全绿，不可相加成一个「全仓库通过率」。
 
 ---
 
@@ -195,7 +196,7 @@ cd ui/desktop && bash scripts/check-dead-classes.sh
 | ✅ P0 | 死 Tailwind 类全仓库清理（方案 A+B） | 已完成 | 394/85/60 → 0；本地 + CI 双绿 |
 | ✅ P0 | 冷启动不回填 `reasoning` | 已完成 | 270/0；e2e 已验 |
 | ✅ P0 | 真机验收 P0-1~P0-3 | 已关闭 | P0-1 环境阻断、P0-2 用户验收、P0-3 通过 |
-| ✅ P1 | UI 21 个测试侧失败（App mock / Hub Router / 超时） | — | **已验证**：UI 1013/0/8 |
+| ✅ P1 | UI 21 个测试侧失败（App mock / Hub Router / 超时） | — | **已验证**：UI 1014/0/8 |
 | **P1** | prompt 快照 feature 集对齐 + 删除 `.snap.new` | 0.1 天 | **已改，已验证** |
 | **P1** | 其余 6 个 Rust 失败（gcpauth×3 / config::extensions / chatgpt_codex / sources×2） | 1-2 天 | **已改（feature 集 + HOME 隔离），已验证** |
 | ✅ P1 | ACP 11 个二进制全量重跑 | — | **已验证**：11/11 全绿 |

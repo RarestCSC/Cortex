@@ -110,8 +110,8 @@
 | 自定义供应商能力管线覆盖率 | ~90%（WorkBuddy 全通、OpenCode 靠 workaround） | 100%（含 OpenCode 系根治） | ↗️ |
 | 能力解析（context / 档位） | ✅ Phase 1 + Phase 2 已验证；lite-gpt `catalog_provider_id: "openai"` | 端点优先、可覆盖 | ✅ |
 | 死 Tailwind 类数量 | **0**（2026-10-17 第五轮清理；修正口径后真实 394 处 / 85 种 / 60 文件） | 0 | ✅ |
-| `cortex --lib` 通过率 | **2295/2295 = 100%**（新 feature 集；旧 8 个失败已修） | 100% | ✅ |
-| 其他测试层 | `cortex-cli --lib` 353/0；UI vitest **1013/0/8**；ACP **11/11** 全绿 | 全绿 | ✅ |
+| `cortex --lib` 通过率 | **2296/2296 = 100%**（新 feature 集；旧 8 个失败已修） | 100% | ✅ |
+| 其他测试层 | `cortex-cli --lib` 353/0；UI vitest **1014/0/8**；ACP **11/11** 全绿 | 全绿 | ✅ |
 | 真机验收完成度 | **P0 真机项已关闭**（P0-1 环境阻断、P0-2 用户验收、P0-3 通过）；P1-10/P1-11 仍待装版/授权 | 全绿 | ↗️ |
 | 配置隔离合规性 | ✅ 验收/验证会话全程 `GOOSE_PATH_ROOT` 隔离 | 100% | ✅ |
 | ⚠️ 上条的唯一例外 | 2026-10-17 `TASK` D10-a 为定决策**直打真 free-lane（8787）5 次**（`SUMMARY` §7.5）。端口在 `AGENTS.md` §1.2 回避名单内，但该次探测发生在主会话 | — | — |
@@ -120,7 +120,7 @@
 
 ## 🔄 下一步行动建议
 
-1. **B 类测试债（已验证）**：UI 21 个、Rust 8 个全部归零；`cortex --lib` 2295/0、UI 1013/0/8、ACP 11/11。
+1. **B 类测试债（已验证）**：UI 21 个、Rust 8 个全部归零；`cortex --lib` 2296/0、UI 1014/0/8、ACP 11/11。
 2. **Phase 1/2（已验证 + 真机验收通过）**：`catalog_provider_id` 别名、context 回填、档位菜单（默认 Off/最低档）全部通过；`cortex-provider-types` 682/0、`cortex-providers` 272/0。
 3. **提交/推送**：已完成（`07d51af` + `e6c919c`，CI 守卫 success）。
 4. **产品决策**：P1-3 三态（需要具体误判模型）。
@@ -210,7 +210,7 @@
 
 - `cortex-providers --lib` 270/0；`cortex-cli --lib` 353/0
 - `session_naming` 3 例定点 **3/0**（P1-11 关闭，无需 release profile）
-- `cortex --lib` 旧基线 2276/8（8 个均为测试环境问题）；第六轮已验证 **2295/0**
+- `cortex --lib` 旧基线 2276/8（8 个均为测试环境问题）；第六轮 2295/0，第八轮 **2296/0**
 - ACP：**11 个二进制 11/11 全绿**（第六轮全量重跑；3 个红已于第五轮修复）
 - UI vitest 992/21/8（21 个均为测试侧：App mock 缺导出、Hub 缺 Router、CustomProviderForm 5s 超时）
 - 真实 `~/.config/cortex/config.yaml` mtime 全程未变（`2026-10-16 15:53:59.629486445`）
@@ -263,7 +263,7 @@
 - 档位标签用端点实际词（如 `xhigh`），不再把 `xhigh` 显示成 `max`。
 - canonical `reasoning_efforts` 作为沉默型 relay 的 fallback。
 - 显式 Off 且词表无 off 词时**省略 `reasoning_effort`**，不再降级成 `low`。
-- 代码已验证：`cortex-provider-types` 682/0、`cortex --lib` 2295/0、UI 1013/0/8、ACP 11/11。
+- 代码已验证：`cortex-provider-types` 682/0、`cortex --lib` 2296/0、UI 1014/0/8、ACP 11/11。
 
 **预期菜单：**
 
@@ -325,3 +325,7 @@
 | tree 看不到 `.agents`/`.config` | `ignore::WalkBuilder.hidden(true)` 忽略 dotfile，模型误判空目录 | 新增 `show_hidden` 参数；默认隐藏时输出「hidden entries omitted: ...」 | tree 6/6 |
 
 > 供应商更新失败是 dev 环境 `GOOSE_DISABLE_KEYRING=1` + 隔离根无 secret 所致，不是代码 bug；隔离根填一次 key 即恢复。
+
+**改动后全量验证**：`cortex --lib` **2296/0**、`cortex-cli --lib` 353/0、ACP **11/11**、UI **1014/0/8**、`tsc` 干净、`cargo fmt --check` 干净。
+
+> 全量 UI 首跑暴露两个高负载 5s 假失败（`CustomProviderForm` 参数化用例、`ExtensionModal` 的 http_streamable 用例），均已加 15s 预算。
