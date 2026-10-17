@@ -1,0 +1,43 @@
+name: Dead Tailwind classes
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dead-classes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dead-classes:
+    name: Scan for unregistered Tailwind tokens
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '12.11.2'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          cache-dependency-path: ui/pnpm-lock.yaml
+
+      - name: Install UI dependencies
+        working-directory: ui
+        run: pnpm install --frozen-lockfile
+
+      - name: Fail on dead Tailwind token classes
+        working-directory: ui/desktop
+        run: bash scripts/check-dead-classes.sh
