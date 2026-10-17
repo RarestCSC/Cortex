@@ -201,8 +201,8 @@ cd ui/desktop && bash scripts/check-dead-classes.sh
 | ✅ P1 | ACP 11 个二进制全量重跑 | — | **已验证**：11/11 全绿 |
 | ✅ P1 | `catalog_provider_id` 接入 canonical（Phase 1，lite-gpt → openai） | — | 代码已改，已验证；OpenCode 的 `oc-` 名字规则仍未做 |
 | ✅ P1 | 档位菜单 / Off 语义（Phase 2） | — | 已决策并实现：默认 Off/最低档；菜单按实际档位；已验证 |
-| **P1** | G2 提示位置决策（底栏是否也要） | 0.2 天 | 取决于真机观感 |
-| **P1** | developer 角色修复的真机验收 | 需用户配合 | 装新版后确认不再 400 |
+| ✅ P1 | G2 提示位置决策（底栏是否也要） | — | **已完成**：底栏弹层显示 ACP option description（沉默型网关的可操作提示），零 schema/i18n 改动 |
+| ✅ P1 | developer 角色修复的真机验收 | — | 暂缓（用户决定） |
 | **P2** | `api_key_env` 坏文件跳过 + 错误可见化 | 1 天 | 方案 B/C |
 | **P2** | 测试隔离漏洞修复（隔离 HOME） | 0.5 天 | 技能测试专用 |
 | ✅ P2 | `session_naming` 3 例回归补跑 | — | **已完成**：debug lib 定点 3/0 |
@@ -217,6 +217,6 @@ cd ui/desktop && bash scripts/check-dead-classes.sh
 
 1. ✅ **Off 语义（已决策 2026-10-17）**：默认选 Off（支持关闭时）或最低档；菜单只显示实际声明档位；无 off 词时显式 Off 省略字段；不支持 Off 的模型不显示 Off。
 2. **`reasoning` 三态**：是否给 `ModelInfo.reasoning` 加 `Option<bool>` 或三态 enum，让用户能显式表达「不推理」？
-3. **探测缓存位置**：`~/.config/cortex/model_capabilities.json` 位置是否合意？是否需 UI 清除入口？
+3. **探测缓存位置**：✅ 已决策（2026-10-18）——位置不动，新增 `cortex capability-cache [--clear]` 查看/清除。
 4. **G2 提示位置**：桌面端底栏（`ThinkingEffortControl.tsx`）是否也需要同一句可操作提示？
 5. **真实 `~/.config/goose` 时间戳**：硬边界记录是否修订为实测值 `2026-10-16 15:33:19`（出处 `FIX-yi` §7.8），还是清理现场恢复基线 `2026-10-09 17:56:19`？

@@ -66,7 +66,8 @@
 | ✅ P1-1 | **`catalog_provider_id` 参与 canonical 查找（Phase 1）** | `AUDIT-2026-10-17` §2 ①、`SUMMARY` §7.5 | **已完成并验证**：lite-gpt 配置改为 `catalog_provider_id: "openai"`；代码用别名解析 `openai/gpt-6-luna`（1.05M / 128k）；端点 context 仍优先。OpenCode 的 `oc-` 名字规则仍未做 |
 | ✅ P1-2 | **档位语义：默认 Off（支持时）/最低档；菜单只显示实际档位** | `AUDIT-2026-10-17` §1.5 | **已完成并验证**：`can_disable_thinking` / `only_reasoning` / `reasoning_effort` 进入菜单；Off 只在支持时出现；显式 Off 且无 off 词时省略字段；不支持 Off 的模型默认最低档 |
 | P1-3 | **`reasoning: false` 无法表达（三态需求）** | `AUDIT-2026-10-17`、`FIX-bing` §9.1 #5 | 给 `ModelInfo` 加三态是产品决策。名字被启发式认成推理模型、用户想显式关掉时无「关」表示 |
-| P1-4 | **`model_capabilities.json` 位置与 UI 清除入口** | `AUDIT-2026-10-17` §5-E #7、`FIX-bing` §9.1 #6 | 当前在配置目录。用户偏好其他位置或希望 UI 可清除需改动 |
+| ✅ P1-4 | **`model_capabilities.json` 位置与清除入口** | `AUDIT-2026-10-17` §5-E #7、`FIX-bing` §9.1 #6 | **已完成**：位置不动；新增 `cortex capability-cache [--clear]`（查看/清除）；零 i18n |
+| ✅ P1-9 | **G2 提示进桌面底栏弹层** | `FIX-bing` §9.1 #4、`AUDIT-2026-10-17` §5-E #6 | **已完成**：弹层显示 ACP option description，零 schema/i18n 改动 |
 | ✅ P1-5 | **腐烂测试修复：`declared_vision_registry` 陈旧断言** | `AUDIT-2026-10-17` §3.3 #1 | **已完成（第五轮）**：只数 POST，1 passed / 0 failed |
 | ✅ P1-6 | **腐烂测试修复：`goose-doc-guide` 死断言** | `AUDIT-2026-10-17` §3.3 #2、`SUMMARY` §8 表**第 12 行** | **已完成（第五轮）**：改断言 `web-search` 并隔离 `HOME`，`acp_custom_requests_test` 21/0 |
 | ✅ P1-7 | **腐烂测试修复：`code-mode` 导致 fixture 预算超时** | `AUDIT-2026-10-17` §3.3 #3 | **已完成（第五轮）**：fixture 预算 5s → 30s，`acp_server_test` 59/0（79s） |
@@ -122,8 +123,8 @@
 1. **B 类测试债（已验证）**：UI 21 个、Rust 8 个全部归零；`cortex --lib` 2295/0、UI 1013/0/8、ACP 11/11。
 2. **Phase 1/2（已验证 + 真机验收通过）**：`catalog_provider_id` 别名、context 回填、档位菜单（默认 Off/最低档）全部通过；`cortex-provider-types` 682/0、`cortex-providers` 272/0。
 3. **提交/推送**：已完成（`07d51af` + `e6c919c`，CI 守卫 success）。
-4. **产品决策**：P1-3 三态、P1-4 缓存位置/UI 清除、P1-9 G2 提示位置。
-5. **真机/装版**：Phase 1+2 真机验收已通过（2026-10-17 晚，dev 二进制 + 隔离根）；P1-10 developer 角色验收仍需装版。
+4. **产品决策**：P1-3 三态（需要具体误判模型）。
+5. **真机/装版**：Phase 1+2 真机验收已通过（2026-10-17 晚，dev 二进制 + 隔离根）；P1-10 developer 角色验收暂缓。
 6. **P2 技术债**：按 `TECH-DEBT.md` §5 逐步清理；Windows 构建暂缓。
 
 ---

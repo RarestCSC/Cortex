@@ -111,7 +111,7 @@ This tool result included an image that was omitted because image input is turne
 |------|------|
 | `~/.config/cortex/custom_providers/*.json` | 用户声明的自定义供应商（`reasoning`、`supports_vision`、`request_params`、`catalog_provider_id`） |
 | `~/.config/cortex/config.yaml` | 全局配置（`active_provider`、`thinking_effort` 等） |
-| `~/.config/cortex/model_capabilities.json` | G1 探测缓存（键：`base_url` FNV-1a-64 哈希 + 模型名，TTL 30 天）。⚠️ 位置与「UI 可清除」是**未决项**（`PROGRESS.md` P1-4）。键的精确算法见 `AGENTS.md` §2.6 |
+| `~/.config/cortex/model_capabilities.json` | G1 探测缓存（键：`base_url` FNV-1a-64 哈希 + 模型名，TTL 30 天）。✅ 清除入口：`cortex capability-cache [--clear]`（2026-10-18）。键的精确算法见 `AGENTS.md` §2.6 |
 | `~/.config/cortex/sessions.db` | 会话存储（SQLite，含 `model_config_json`） |
 | `~/.config/cortex/model_catalog/` | 后端启动时生成的模型目录 |
 | `~/.local/share/keyrings/login.keyring` | 钥匙串落盘（`Entry::new("cortex","secrets")`；`secrets.yaml` 不存在=未降级） |

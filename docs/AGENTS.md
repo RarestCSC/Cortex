@@ -274,7 +274,7 @@ export GOOSE_PATH_ROOT=/tmp/opencode/<your-dir>
 4. **OpenCode 系根治**：`catalog_provider_id` 已接入 canonical（Phase 1）；`oc-*` 名字规则仍未做，需另行评估
 5. **真实 `~/.config/goose` 时间戳**：硬边界记录（`2026-10-09 17:56:19`）是否修订为实测值（`2026-10-16 15:33:19`），还是清理现场恢复基线？出处是 `FIX-yi` §7.8（**不是** `AUDIT-2026-10-17` §7.8，该节不存在）
 6. **`api_key_env` 坏文件容错**：方案 B/C（跳过+错误可见）是否立项
-7. **G2 提示位置**：桌面端底栏（`ThinkingEffortControl.tsx`）是否也需要同一句可操作提示？（当前只在 ACP option description，出处 `FIX-bing` §9.1 / `AUDIT` §5-E #6）
+7. ✅ **G2 提示位置（已完成 2026-10-18）**：底栏弹层已显示同一句 ACP option description（`ThinkingEffortControl.tsx`，零 schema/i18n 改动）
 
 ---
 
