@@ -41,6 +41,9 @@ mod tests {
         } else {
             env::set_var("HOME", temp_dir.path());
         }
+        // This test asserts the default path contains `cortex`; a verification
+        // session's isolated root would otherwise replace that component.
+        env::remove_var("GOOSE_PATH_ROOT");
         temp_dir
     }
 

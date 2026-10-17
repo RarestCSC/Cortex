@@ -47,13 +47,30 @@ pub fn materialize_model_config(provider_name: &str, model: ModelConfig) -> Resu
     Ok(apply_canonical_limits(provider_name, model))
 }
 
+/// The public catalog provider a custom provider proxies, when the user
+/// declared one. `custom_lite-gpt` with `catalog_provider_id: "openai"` must
+/// resolve `gpt-6-luna` against `openai/gpt-6-luna`, not against the literal
+/// provider name (which is not a catalog key).
+fn canonical_provider_name(provider_name: &str) -> String {
+    if provider_name.starts_with("custom_") {
+        if let Ok(loaded) = crate::config::declarative_providers::load_provider(provider_name) {
+            if let Some(alias) = loaded.config.catalog_provider_id {
+                return alias;
+            }
+        }
+    }
+    provider_name.to_string()
+}
+
 fn apply_canonical_limits(provider_name: &str, model: ModelConfig) -> ModelConfig {
     if provider_name == cortex_providers::azure_foundry::AZURE_FOUNDRY_PROVIDER_NAME {
         model
     } else {
+        let canonical_provider = canonical_provider_name(provider_name);
         model
-            .with_canonical_limits(provider_name)
-            .with_canonical_vision_support(provider_name)
+            .with_canonical_limits(&canonical_provider)
+            .with_canonical_vision_support(&canonical_provider)
+            .with_canonical_context_limit(&canonical_provider)
     }
 }
 
@@ -75,9 +92,11 @@ fn materialize_model_config_inner(
     model = model.with_default_max_tokens(config.get_goose_max_tokens()?);
 
     if include_default_thinking_effort {
-        let default_effort = config
-            .get_goose_thinking_effort()
-            .or_else(|| model.endpoint_default_effort());
+        // The menu's default is Off when the model can disable thinking, or its
+        // lowest declared level otherwise. Do not seed the endpoint's own
+        // `reasoning_default_effort`: that is the model's preference, not the
+        // user's, and it would make "Default" send a level the user did not pick.
+        let default_effort = config.get_goose_thinking_effort();
         model = model.with_default_thinking_effort(default_effort);
     }
 

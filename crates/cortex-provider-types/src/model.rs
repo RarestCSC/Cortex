@@ -115,6 +115,39 @@ impl<'de> Deserialize<'de> for ModelConfig {
     }
 }
 
+fn levels_from_words(words: &[String]) -> Vec<ThinkingEffort> {
+    let parsed: Vec<ThinkingEffort> = words
+        .iter()
+        .filter_map(|word| word.parse::<ThinkingEffort>().ok())
+        .collect();
+    [
+        ThinkingEffort::Off,
+        ThinkingEffort::Low,
+        ThinkingEffort::Medium,
+        ThinkingEffort::High,
+        ThinkingEffort::Max,
+    ]
+    .into_iter()
+    .filter(|effort| parsed.contains(effort))
+    .collect()
+}
+
+fn word_for_words(words: &[String], effort: ThinkingEffort) -> Option<String> {
+    let spellings: &[&str] = match effort {
+        ThinkingEffort::Off => &["none", "off"],
+        ThinkingEffort::Low => &["low"],
+        ThinkingEffort::Medium => &["medium"],
+        ThinkingEffort::High => &["high"],
+        ThinkingEffort::Max => &["max", "xhigh"],
+    };
+    spellings.iter().find_map(|spelling| {
+        words
+            .iter()
+            .find(|word| word.eq_ignore_ascii_case(spelling))
+            .cloned()
+    })
+}
+
 impl ModelConfig {
     pub fn new(model_name: impl AsRef<str>) -> Self {
         let mut config = Self {
@@ -184,8 +217,28 @@ impl ModelConfig {
                         .contains(&crate::canonical::Modality::Image),
                 )
             }
+            if let Some(efforts) = canonical.reasoning_efforts.clone() {
+                let capabilities = self
+                    .endpoint_capabilities
+                    .get_or_insert_with(Default::default);
+                if capabilities.canonical_efforts.is_none() {
+                    capabilities.canonical_efforts = Some(efforts);
+                }
+            }
         }
 
+        self
+    }
+
+    /// Fill the input context window from the public catalog when nobody else
+    /// supplied one. Kept separate from `with_canonical_limits`, which only
+    /// fills output limits, reasoning, and vision.
+    pub fn with_canonical_context_limit(mut self, provider_name: &str) -> Self {
+        if self.context_limit.is_none() {
+            if let Some(canonical) = self.canonical_model(provider_name) {
+                self.context_limit = Some(canonical.limit.context);
+            }
+        }
         self
     }
 
@@ -314,6 +367,72 @@ impl ModelConfig {
         self.endpoint_capabilities
             .as_ref()
             .and_then(|capabilities| capabilities.default_effort())
+    }
+
+    /// The levels the menu should offer: the endpoint's own vocabulary first,
+    /// then the canonical alias's vocabulary for silent relays.
+    pub fn declared_effort_levels(&self) -> Vec<ThinkingEffort> {
+        let endpoint = self.endpoint_effort_levels();
+        if !endpoint.is_empty() {
+            return endpoint;
+        }
+        self.endpoint_capabilities
+            .as_ref()
+            .and_then(|capabilities| capabilities.canonical_efforts.as_deref())
+            .map(levels_from_words)
+            .unwrap_or_default()
+    }
+
+    /// Whether an `Off` stop can be honoured. The endpoint wins; a canonical
+    /// vocabulary containing `none`/`off` is the fallback; silence keeps the
+    /// historical behaviour (Off sends nothing).
+    pub fn off_allowed(&self) -> bool {
+        if let Some(capabilities) = self.endpoint_capabilities.as_ref() {
+            if let Some(allowed) = capabilities.off_allowed() {
+                return allowed;
+            }
+            // A relay that published levels but never mentioned disabling
+            // thinking did not promise an Off stop. A completely silent relay
+            // keeps the historical five-level menu, which includes Off.
+            if capabilities.reasoning_supported_efforts.is_some()
+                || capabilities.reasoning_effort.is_some()
+            {
+                return false;
+            }
+            if let Some(words) = capabilities.canonical_efforts.as_deref() {
+                return words.iter().any(|word| {
+                    word.eq_ignore_ascii_case("none") || word.eq_ignore_ascii_case("off")
+                });
+            }
+        }
+        // These families are always-on when the endpoint is silent; the menu
+        // already uses a three-level fallback without Off for them.
+        if self.is_glm_5_3_reasoning_model() || self.is_kimi_k3_reasoning_model() {
+            return false;
+        }
+        true
+    }
+
+    /// The lowest level the menu offers. `default` maps here when `Off` is not
+    /// available.
+    pub fn lowest_effort(&self) -> Option<ThinkingEffort> {
+        self.declared_effort_levels().first().copied()
+    }
+
+    /// The label for a level: the endpoint's actual word (`xhigh`) rather than
+    /// Cortex's internal name (`max`), falling back to the internal name.
+    pub fn effort_label(&self, effort: ThinkingEffort) -> String {
+        if let Some(capabilities) = self.endpoint_capabilities.as_ref() {
+            if let Some(label) = capabilities.effort_label(effort) {
+                return label;
+            }
+            if let Some(words) = capabilities.canonical_efforts.as_deref() {
+                if let Some(label) = word_for_words(words, effort) {
+                    return label;
+                }
+            }
+        }
+        effort.to_string()
     }
 
     pub fn with_inherited_session_settings_from(
@@ -918,6 +1037,54 @@ mod tests {
             let config = ModelConfig::new("gpt-4o").with_canonical_limits("openai");
             assert_eq!(config.max_tokens, Some(16_384));
             assert_eq!(config.reasoning, Some(false));
+        }
+
+        #[test]
+        fn fills_context_limit_from_canonical_model() {
+            let config = ModelConfig::new("gpt-6-luna").with_canonical_context_limit("openai");
+            assert_eq!(config.context_limit, Some(1_050_000));
+        }
+
+        #[test]
+        fn does_not_override_existing_context_limit() {
+            let config = ModelConfig::new("gpt-6-luna")
+                .with_context_limit(Some(200_000))
+                .with_canonical_context_limit("openai");
+            assert_eq!(config.context_limit, Some(200_000));
+        }
+
+        #[test]
+        fn canonical_efforts_fill_a_silent_relay() {
+            let config = ModelConfig::new("gpt-6-luna").with_canonical_limits("openai");
+            assert_eq!(
+                config.declared_effort_levels(),
+                vec![
+                    ThinkingEffort::Off,
+                    ThinkingEffort::Low,
+                    ThinkingEffort::Medium,
+                    ThinkingEffort::High,
+                    ThinkingEffort::Max,
+                ]
+            );
+            assert!(config.off_allowed());
+            assert_eq!(config.lowest_effort(), Some(ThinkingEffort::Off));
+            assert_eq!(config.effort_label(ThinkingEffort::Max), "max");
+        }
+
+        #[test]
+        fn canonical_efforts_without_off_hide_it() {
+            let config = ModelConfig::new("gpt-6.1-sol").with_canonical_limits("openai");
+            assert_eq!(
+                config.declared_effort_levels(),
+                vec![
+                    ThinkingEffort::Low,
+                    ThinkingEffort::Medium,
+                    ThinkingEffort::High,
+                    ThinkingEffort::Max,
+                ]
+            );
+            assert!(!config.off_allowed());
+            assert_eq!(config.lowest_effort(), Some(ThinkingEffort::Low));
         }
 
         #[test]

@@ -58,8 +58,9 @@ CARGO_TARGET_DIR=/tmp/opencode/cortex-rust-target
 
 ### 2.5 `-p cortex` 的测试 / clippy feature 集
 ```
---features scheduler,acp-http,tree-sitter,code-mode
+--features scheduler,acp-http,tree-sitter,code-mode,platform-apps,chat-recall,rustls-tls
 ```
+> `platform-apps`/`chat-recall` 用于 prompt 快照与 `config::extensions`；`rustls-tls` 提供 `jsonwebtoken` 的 CryptoProvider（缺它 `chatgpt_codex`/`gcpauth` 会 panic）。等价写法：`portable-default,code-mode`。
 ⚠️ 不加 `scheduler` 会连带 **24 个编译错误**（`agents/state_machine/tests/`）。
 ⚠️ `--all-targets` + 加了 `scheduler` 会撞 `E0432: unresolved import cortex::acp::transport`（`acp/mod.rs:12` 带 `#[cfg(feature = "acp-http")]`）。
 格式层现位于 `cortex-provider-types`，定点跑：`cargo test -p cortex-provider-types --lib formats::openai::`。
@@ -166,10 +167,10 @@ cargo fmt --all && cargo fmt --all --check
 git diff --check          # 在仓库根
 cargo test -p cortex-provider-types --lib
 cargo test -p cortex-providers --lib
-cargo test -p cortex --lib --features scheduler,acp-http,tree-sitter,code-mode
+cargo test -p cortex --lib --features scheduler,acp-http,tree-sitter,code-mode,platform-apps,chat-recall,rustls-tls
 cargo test -p cortex-cli --lib
 # 集成测试（务必跑）
-cargo test -p cortex --features scheduler,acp-http,tree-sitter,code-mode --test <name>
+cargo test -p cortex --features scheduler,acp-http,tree-sitter,code-mode,platform-apps,chat-recall,rustls-tls --test <name>
 
 # 死类扫描（需 vite dev server 或 --css /tmp/gen.css）
 cd ui/desktop && python3 scripts/scan-dead-classes.py

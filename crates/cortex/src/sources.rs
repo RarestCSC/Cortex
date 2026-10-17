@@ -1815,6 +1815,12 @@ mod tests {
 
     #[test]
     fn list_sources_lists_builtin_skills_without_upstream_doc_guide() {
+        // A developer-installed ~/.agents/skills/web-search suppresses the
+        // builtin of the same name, so keep HOME out of the real account.
+        let tmp = TempDir::new().unwrap();
+        let temp_root = tmp.path().display().to_string();
+        let _guard = env_lock::lock_env([("HOME", Some(temp_root.as_str()))]);
+
         let listed = list_sources(Some(SourceType::BuiltinSkill), None, false).unwrap();
 
         assert!(
@@ -1890,6 +1896,8 @@ mod tests {
     fn rejects_unsupported_source_type_for_mutation() {
         let tmp = TempDir::new().unwrap();
         let project = tmp.path().to_str().unwrap();
+        let temp_root = tmp.path().display().to_string();
+        let _guard = env_lock::lock_env([("HOME", Some(temp_root.as_str()))]);
 
         let err = create_source(
             SourceType::BuiltinSkill,

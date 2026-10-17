@@ -3000,6 +3000,7 @@ mod tests {
             build_switched_model_config("openai", "gpt-5.4", &current_model_config).unwrap();
         let expected = cortex_providers::model::ModelConfig::new("gpt-5.4")
             .with_canonical_limits("openai")
+            .with_canonical_context_limit("openai")
             .with_temperature(Some(0.25))
             .with_toolshim(true)
             .with_toolshim_model(Some("qwen2.5-coder".to_string()));

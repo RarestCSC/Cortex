@@ -31,7 +31,9 @@
 ### 【Off 兜底三元组】-【选「Off」实际发出 `low`】-【`openai_reasoning_effort_for_endpoint` 内 `accepts` 闭包的 `(None, None)` 分支回落硬编码 `["low","medium","high"]`，`Off` 的 preferred 序列 `none → minimal → off → low` 落到 `low`；`Max` 则落到 `high`】-【删除三元组（含 `openai_reasoning_efforts_for_model()` 连同 doc 注释），改为 `own_effort_word()`「只发明词、不发明档位」：`Off` 无词故不发字段，`Max` 发 `max` 而非 `high`】
 
 > ⚠️ **偏离字面指示**：原 TASK D10-b 要求「返回空集」，实测字面空集会打破 **4 处**（其中 2 条是乙/丙的核心不变量）；既有 6 条测试的处理是**改写 3 + 保留 1（跨路径不变量）+ 新增 2**。受影响模型不止「网关闭默型」——`zai-org/GLM-5.3-Flash`、`claude-sonnet-4`、`kimi-k3`、`gemini-3-pro`、`gpt-6.1-sol@eu` 全走这条分支（`openai.rs` 的映射把 provider 写死成 `"openai"`）。
-> ⚠️ **同类缺口仍在**：「目录有词表但无『关』的词」时 `Off` 仍发 `low`（`cn:glm-5.3-flash` 实测，含 7865 声明型网关），属产品决策未修（`PROGRESS` P1-2）。
+> ✅ **同类缺口已修（Phase 2）**：端点/目录有词表但无「关」的词时，显式 `Off` 省略字段，不再发 `low`；不支持 Off 的模型菜单里不出现 Off，默认落到最低档。决策与实现见 `PROGRESS` P1-2 / `TECH-DEBT` §3.2。
+
+### 【档位默认与 Off 可见性】-【固定五档 + Off 乱入】-【不同端点支持的档位不同：`gpt-6-luna` 只有 low/medium/high/xhigh，`gpt-6-astra` 有 off，`cn:auto` 固定 high】-【默认 = Off（支持关闭时）或最低档；菜单只显示端点/canonical 实际声明的档位；Off 只在 `can_disable_thinking`、词表含 `none`/`off`、或端点完全沉默时出现；无数据才回退固定五档】
 
 ---
 
@@ -73,7 +75,7 @@
 
 ### 【测试隔离】-【技能测试读到开发者真实 `~/.agents/skills` 导致失败】-【`GOOSE_PATH_ROOT` 只隔离 config/data/state，**不隔离 `~/.agents/skills`**（`crates/cortex/src/skills/mod.rs:401` 用 `dirs::home_dir()`）；`discover_skills` 的 `seen` 去重让自装技能顶掉内置】-【以后写技能测试要么隔离 `HOME` 要么别依赖 builtin 存在；CI 需干净机器跑。⚠️ **只读未写**，硬边界「真实 config 目录未被触碰」仍成立】
 
-### 【集成测试从未跑过】-【`declared_vision_registry` 陈旧断言活到今天】-【三轮只跑 `--lib`，从没跑 `--test`；且验证清单长期不含 `settings/models` 目录，导致 `ComposerModelPopover.test.tsx` 的 210px 过期断言也一直没跑到】-【验收必须带全 `scheduler,acp-http,tree-sitter,code-mode`，且跑集成测试；⚠️ **测试失败必须回旧仓库跑同一用例确认是否既有，不能默认归因本次改动**】
+### 【集成测试从未跑过】-【`declared_vision_registry` 陈旧断言活到今天】-【三轮只跑 `--lib`，从没跑 `--test`；且验证清单长期不含 `settings/models` 目录，导致 `ComposerModelPopover.test.tsx` 的 210px 过期断言也一直没跑到】-【验收必须带全 `scheduler,acp-http,tree-sitter,code-mode,platform-apps,chat-recall,rustls-tls`，且跑集成测试；⚠️ **测试失败必须回旧仓库跑同一用例确认是否既有，不能默认归因本次改动**】
 
 ### 【慢用例假失败】-【~4.4~5.0s 的用例在默认 5s 预算下报超时】-【看起来像断言失败，实际是超时】-【定点跑 UI 测试带 `--testTimeout=15000`（或 `30000`）；见 `PROGRESS` P2-6】
 
@@ -85,11 +87,13 @@
 
 ### 【可诊断性缺陷】-【后端根因查了两轮】-【`cortexServe.ts` 的 `onStderrData` **只把 `isFatalError` 落 main.log，所有 `warn!`/`error!` 级后端日志一律丢弃**】-【现新增 `isBackendDiagnostic` 落 `logger.warn`，`Logger` 接口加**可选** `warn?` 不破坏既有实现。⚠️ **这类缺陷会复发**：可观测性缺口比功能 bug 更难查，因为它不会报错】
 
-### 【改名未提交状态禁用 git stash】-【`git stash push -- <path>` 会把文件整个撤走留 unmerged 索引】-【用 `diff` 逐字节确认、用 `git add` 清掉 unmerged 项】
+### 【改名已提交，git stash 恢复可用】-【历史上 `git stash push -- <path>` 曾把文件整个撤走留 unmerged 索引】-【改名已提交到新仓库后该前提消失；仍优先用 `git diff` / `git restore` 定点回退，避免整文件撤走】
 
 ### 【硬边界：真实配置目录不可触碰】-【全程 `GOOSE_PATH_ROOT` 隔离】-【判据：dev 态经隔离根运行不写真实配置 ⇒ 真实配置目录的写入只能来自正式版，可用文件时间戳取证。⚠️ **例外**：2026-10-17 `TASK` D10-a 为定决策直打真 free-lane 5 次】
 
-### 【Tailwind v4 死类不报错】-【511 处死类，构建/typecheck/单测全过，只有真机看不出样式】-【**写错了不报错**：未注册 token 不生成任何 CSS，类名写在 DOM 上但无规则命中 ⇒ 元素默默用浏览器默认样式渲染。`@theme inline` 注册范围见 `ui/desktop/src/styles/main.css`】-【必须接入 CI 守卫（`scan-dead-classes.py` 对照 live dev server 生成 CSS）。⚠️ **单测断言 `aria-pressed` 而不是渲染出的样式，查不出死类**】
+### 【Tailwind v4 死类不报错】-【修正口径后真实 394 处死类，构建/typecheck/单测全过，只有真机看不出样式】-【**写错了不报错**：未注册 token 不生成任何 CSS，类名写在 DOM 上但无规则命中 ⇒ 元素默默用浏览器默认样式渲染。`@theme inline` 注册范围见 `ui/desktop/src/styles/main.css`】-【已接入 CI 守卫（`scan-dead-classes.py` 对照 live dev server 生成 CSS + GitHub Actions `.github/workflows/dead-classes.yml`）。⚠️ **单测断言 `aria-pressed` 而不是渲染出的样式，查不出死类**】
+
+### 【快照测试必须与 feature 集对齐】-【`prompt_manager::test_all_platform_extensions` 在基线 feature 集下红，误以为产品回归】-【快照含 `apps`/`chatrecall` 两段，它们分别挂 `platform-apps`/`chat-recall` feature，而旧基线命令 `scheduler,acp-http,tree-sitter,code-mode` 没开（现已补上 `platform-apps,chat-recall`）】-【快照测试要按 feature gate，或固定同一 feature 集；否则「失败」不是回归，是环境差异】
 
 ### 【非 Option `bool` 语义陷阱】-【`ModelInfo.reasoning` 是 `#[serde(default)] bool`，「声明 false」与「没写」类型上不可区分】-【照搬 `false` 会静默剥掉所有被名字启发式识别为推理模型的自定义模型】-【**只发布 `true`**，沉默比误伤安全：多发 effort 代价可自愈，少发代价不可自愈】
 

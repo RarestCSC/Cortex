@@ -362,10 +362,11 @@ fn build_thinking_effort_choices(
         }
         ThinkingEffortSupport::Unspecified => (
             thinking_effort_values(model_config)
-                .iter()
+                .into_iter()
                 .map(|effort| {
-                    let effort = effort.to_string();
-                    SessionConfigSelectOption::new(effort.clone(), effort)
+                    let value = effort.to_string();
+                    let label = model_config.effort_label(effort);
+                    SessionConfigSelectOption::new(value, label)
                 })
                 .collect(),
             current_thinking_effort_value(model_config),
@@ -392,10 +393,19 @@ fn thinking_effort_values(model_config: &ModelConfig) -> Vec<ThinkingEffort> {
     }
     // What the endpoint says it accepts wins over our own list: a gateway that
     // publishes one level has one level, and offering five would be the same
-    // kind of promise we just stopped making.
-    let declared = model_config.endpoint_effort_levels();
+    // kind of promise we just stopped making. A silent relay falls back to the
+    // canonical alias's vocabulary, then to the fixed five.
+    let declared = model_config.declared_effort_levels();
     if !declared.is_empty() {
-        return declared;
+        let mut levels = declared;
+        if model_config.off_allowed() {
+            if !levels.contains(&ThinkingEffort::Off) {
+                levels.insert(0, ThinkingEffort::Off);
+            }
+        } else {
+            levels.retain(|effort| *effort != ThinkingEffort::Off);
+        }
+        return levels;
     }
     if model_config.is_glm_5_3_reasoning_model() || model_config.is_kimi_k3_reasoning_model() {
         return vec![
@@ -418,49 +428,33 @@ fn current_thinking_effort_value(model_config: &ModelConfig) -> String {
         return "off".to_string();
     }
 
-    let configured = model_config
-        .thinking_effort()
-        .or_else(|| Config::global().get_goose_thinking_effort())
-        .or_else(|| model_config.endpoint_default_effort());
     let values = thinking_effort_values(model_config);
-
-    // A level the endpoint never declared cannot be honoured, so settle on the
-    // nearest one it did rather than showing a value that will not be sent.
-    if let Some(effort) = configured.filter(|effort| !values.contains(effort)) {
-        if let Some(nearest) = values
-            .iter()
-            .min_by_key(|candidate| effort_distance(**candidate, effort))
-        {
-            return nearest.to_string();
+    let default_effort = if values.contains(&ThinkingEffort::Off) {
+        ThinkingEffort::Off
+    } else {
+        model_config.lowest_effort().unwrap_or(ThinkingEffort::Low)
+    };
+    match model_config
+        .request_param::<String>("thinking_effort")
+        .as_deref()
+    {
+        Some("default") => return default_effort.to_string(),
+        Some(value) => {
+            if let Ok(effort) = value.parse::<ThinkingEffort>() {
+                if values.contains(&effort) {
+                    return effort.to_string();
+                }
+            }
+            return default_effort.to_string();
+        }
+        None => {}
+    }
+    if let Some(global) = Config::global().get_goose_thinking_effort() {
+        if values.contains(&global) {
+            return global.to_string();
         }
     }
-    if model_config.is_glm_5_3_reasoning_model() || model_config.is_kimi_k3_reasoning_model() {
-        return match configured {
-            Some(ThinkingEffort::Off | ThinkingEffort::Low) => ThinkingEffort::Low,
-            Some(ThinkingEffort::Medium | ThinkingEffort::High) => ThinkingEffort::High,
-            Some(ThinkingEffort::Max) | None => ThinkingEffort::Max,
-        }
-        .to_string();
-    }
-
-    configured
-        .map(|effort| effort.to_string())
-        .unwrap_or_else(|| "off".to_string())
-}
-
-/// How many menu steps apart two levels are, so a level the endpoint does not
-/// accept resolves to the closest one it does.
-fn effort_distance(left: ThinkingEffort, right: ThinkingEffort) -> u8 {
-    const ORDER: [ThinkingEffort; 5] = [
-        ThinkingEffort::Off,
-        ThinkingEffort::Low,
-        ThinkingEffort::Medium,
-        ThinkingEffort::High,
-        ThinkingEffort::Max,
-    ];
-    let position =
-        |effort: ThinkingEffort| ORDER.iter().position(|e| *e == effort).unwrap_or(0) as i8;
-    (position(left) - position(right)).unsigned_abs()
+    default_effort.to_string()
 }
 
 /// The thinking-effort option's help text.
@@ -1097,14 +1091,15 @@ mod tests {
             "{label}: the shown value {current} is not among the offered {values:?}"
         );
 
-        let off_stays_silent = model_config.thinking_effort() == Some(ThinkingEffort::Off)
-            && !model_config.openai_reasoning_for_model(&model_config.model_name);
-        assert_eq!(
-            sent.is_some(),
-            !off_stays_silent,
-            "{label}: an adjustable model must put the picked level on the wire, \
-             and the request says nothing"
-        );
+        // Every non-Off stop must reach the wire. Off may omit the field:
+        // providers that manage disabling themselves need the omission.
+        if current.parse::<ThinkingEffort>().ok() != Some(ThinkingEffort::Off) {
+            assert!(
+                sent.is_some(),
+                "{label}: an adjustable model must put the picked level on the wire, \
+                 and the request says nothing"
+            );
+        }
     }
 
     #[test]
@@ -1159,6 +1154,63 @@ mod tests {
             "xhigh is the same level as max, so the menu shows it once — as max"
         );
         assert_menu_and_payload_agree(&model_config, "cn:space-bunny");
+    }
+
+    #[test]
+    fn test_only_reasoning_hides_off_and_defaults_to_the_lowest_level() {
+        let _guard = env_lock::lock_env([("GOOSE_THINKING_EFFORT", None::<&str>)]);
+        let mut model_config = ModelConfig::new("global:gpt-6-luna");
+        model_config.reasoning = Some(true);
+        let model_config = model_config.with_endpoint_capabilities(
+            cortex_providers::endpoint_capabilities::EndpointModelCapabilities::from_models_entry(
+                &serde_json::json!({
+                    "id": "global:gpt-6-luna",
+                    "reasoning_supported_efforts": ["low", "medium", "high", "xhigh"],
+                    "only_reasoning": true,
+                }),
+            ),
+        );
+
+        assert_eq!(
+            thinking_effort_values(&model_config),
+            [
+                ThinkingEffort::Low,
+                ThinkingEffort::Medium,
+                ThinkingEffort::High,
+                ThinkingEffort::Max,
+            ]
+        );
+        assert_eq!(current_thinking_effort_value(&model_config), "low");
+        assert_menu_and_payload_agree(&model_config, "global:gpt-6-luna");
+    }
+
+    #[test]
+    fn test_can_disable_thinking_adds_off_and_defaults_to_it() {
+        let _guard = env_lock::lock_env([("GOOSE_THINKING_EFFORT", None::<&str>)]);
+        let mut model_config = ModelConfig::new("global:gpt-6-astra");
+        model_config.reasoning = Some(true);
+        let model_config = model_config.with_endpoint_capabilities(
+            cortex_providers::endpoint_capabilities::EndpointModelCapabilities::from_models_entry(
+                &serde_json::json!({
+                    "id": "global:gpt-6-astra",
+                    "reasoning_supported_efforts": ["low", "medium", "high", "xhigh", "max"],
+                    "can_disable_thinking": true,
+                }),
+            ),
+        );
+
+        assert_eq!(
+            thinking_effort_values(&model_config),
+            [
+                ThinkingEffort::Off,
+                ThinkingEffort::Low,
+                ThinkingEffort::Medium,
+                ThinkingEffort::High,
+                ThinkingEffort::Max,
+            ]
+        );
+        assert_eq!(current_thinking_effort_value(&model_config), "off");
+        assert_menu_and_payload_agree(&model_config, "global:gpt-6-astra");
     }
 
     #[test]

@@ -158,6 +158,15 @@ mod tests {
         );
     }
 
+    #[test]
+    fn canonical_alias_resolves_the_proxied_provider() {
+        // `custom_lite-gpt` declares `catalog_provider_id: "openai"`, so the
+        // resolver must see `openai`, not the literal custom provider name.
+        let resolver = ContextLimitResolver::new("openai");
+        assert_eq!(resolver.resolve_local("gpt-6-luna", None), 1_050_000);
+        assert_eq!(resolver.resolve_local("gpt-6.1-sol", None), 1_050_000);
+    }
+
     #[tokio::test]
     async fn ignores_zero_discovered_limits() {
         let resolver = ContextLimitResolver::new("unknown-provider");

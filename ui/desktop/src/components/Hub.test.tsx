@@ -3,6 +3,7 @@
  */
 import { act, render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router';
 import Hub from './Hub';
 import { IntlTestWrapper } from '../i18n/test-utils';
 import { createSession } from '../sessions';
@@ -102,7 +103,9 @@ function pendingSession() {
 function renderHub(draftRef: { current: string }, setView = vi.fn()) {
   return render(
     <IntlTestWrapper>
-      <Hub setView={setView} draftRef={draftRef} liveVoice={liveVoice} />
+      <MemoryRouter>
+        <Hub setView={setView} draftRef={draftRef} liveVoice={liveVoice} />
+      </MemoryRouter>
     </IntlTestWrapper>
   );
 }
@@ -328,7 +331,9 @@ describe('Hub', () => {
     expect(draftRef.current).toBe(DRAFT);
     rerender(
       <IntlTestWrapper>
-        <Hub setView={setView} draftRef={draftRef} liveVoice={liveVoice} />
+        <MemoryRouter>
+          <Hub setView={setView} draftRef={draftRef} liveVoice={liveVoice} />
+        </MemoryRouter>
       </IntlTestWrapper>
     );
     await submit();

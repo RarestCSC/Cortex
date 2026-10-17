@@ -13,6 +13,7 @@
 - `GOOSE_PATH_ROOT` 必须是**绝对路径**，非绝对无效
 - 真实 `~/.config/goose` 的 mtime/ctime 必须保持 `2026-10-09 17:56:19.234001826 +0800`；变化立即停止报告，不得改回
   - **[需人工确认]**：`FIX-yi` §7.8 记录实测为 `2026-10-16 15:33:19.319533114 +0800`（`~/.config/cortex` 为 `2026-10-16 15:41:44.329279483`），判定为**用户手工改配置**所致、非构建回归；硬边界基线是否修订待确认
+  - 2026-10-17 第五轮实测：`~/.config/cortex/config.yaml` mtime 全程未变（`2026-10-16 15:53:59.629486445`），隔离根验收未写真实配置；基线是否修订仍待人工确认
   - ⚠️ 归档的 `AUDIT-2026-10-17.md` **没有 §7.8**（该文止于 §8，§7 无子节）。此处出处是 `FIX-yi-reasoning-effort-honesty.md` §7.8，勿再误引为「审计 §7.8」
 
 ### 1.2 真实模型请求
@@ -37,10 +38,10 @@
 - `KEYRING_SERVICE="cortex"`、`KEYRING_USERNAME="secrets"`
 
 ### 1.5 Git 操作
-- **本仓库当前处于改名未提交状态，不要用 `git stash` 做局部回退**——会把文件整个撤走并留下 unmerged 索引项
-- 不 reset、不覆盖、不提交、不推送，保留全部改动
-- 当前分支 `composer-ui-refactor`、HEAD `3bd8520`（`refactor-plan.md` §0）
-- 旧回退目录 `/home/rarestcsc/Goose_test/goose` 的**源码（651M）与 `.git` 仍在**，是可回退副本；构建产物已清（回收 11.9G）
+- **改名已提交到新仓库**：`main`（fresh history），HEAD `c07283a`（后续以 `git log -1` 为准），remote `https://github.com/RarestCSC/Cortex.git`（private）
+- **不 reset、不覆盖、不提交、不推送**；仓库初始化与 CI 守卫提交已获用户明确授权，后续每次提交/推送仍需逐次授权
+- `git stash` 已恢复为正常操作（改名未提交状态已结束）；但仍优先用 `git diff` / `git restore` 定点回退，避免整文件撤走
+- 旧回退目录 `/home/rarestcsc/Goose_test` 与 `Cortex-goose-backup` **均已删除**；当前只有 `/home/rarestcsc/Cortex` 这一份工作副本
 
 ---
 
@@ -71,7 +72,8 @@
 - **没有证据时发明档位是错的**
 - `openai_reasoning_effort_for_endpoint` 内 `accepts` 闭包的 `(None, None)` 分支（`formats/openai.rs:2039`）改为「只认本档自己的词」：`Off` 无词故不发字段，`Max` 发 `max`
 - 端点声明了但不含某档时用**它声明过的**词兜底，不越界发明
-- **但「目录有词表但无『关』的词」时 `Off` 仍会落到 `low`**——属产品决策非机械修复，[需人工确认]
+- **默认档**：支持关闭思考 → `Off`；不支持 → **最低档**。菜单只显示端点/canonical 实际声明的档位；无数据才回退固定五档
+- **「有词表但无『关』的词」已决策**：支持关闭但无 off 词时，显式 `Off` **省略字段**，不再落到 `low`；`only_reasoning` 且无 `can_disable_thinking` 的模型不显示 `Off`，遗留 `Off` 值按默认落到最低档
 - 每次降级都是「剥掉 → 重试一次 → 落盘」，**没有第二次降级**：图像剥掉后再拒 effort 是两种能力的问题，一次请求只处理一个
 
 ### 2.5 三态可逆
@@ -143,7 +145,7 @@
 - ⚠️ **DOM 陷阱**：按钮组不能用嵌套 `<button>`（非法且点击会冒泡触发父级折叠）；组头折叠要用 `div` 包住折叠 toggle 与 `+` 两个**兄弟** button
 
 ### 3.3 测试
-- **验收必须带全 feature**：`scheduler,acp-http,tree-sitter,code-mode`（`analyze` 扩展挂 `tree-sitter`）
+- **验收必须带全 feature**：`scheduler,acp-http,tree-sitter,code-mode,platform-apps,chat-recall,rustls-tls`（`analyze` 挂 `tree-sitter`；`apps`/`chatrecall` 分别挂 `platform-apps`/`chat-recall`；`jsonwebtoken` 的 CryptoProvider 由 `rustls-tls` 提供）。等价写法：`portable-default,code-mode`
 - **必须跑集成测试**（`--test`），不能只跑 `--lib`——三轮只跑 `--lib` 导致陈旧断言存活
 - ⚠️ **测试失败必须回旧仓库跑同一用例确认是否既有，不能默认归因本次改动**
 - ⚠️ **验证清单必须覆盖改动所在目录**：`settings/models` 长期不在清单里，导致 `ComposerModelPopover.test.tsx` 的过期断言（210px vs `maxHeight` 520px）存活到今天
@@ -160,7 +162,7 @@ export GOOSE_PATH_ROOT=/tmp/opencode/<your-dir>
 ```
 - `cargo clippy --all-targets -- -D warnings` 在本分支跑不通（feature 门控 + 改名遗留），可行写法：`-p <crate>` 分开 + `--features scheduler,acp-http` + `-A dead_code`
   - 时间线：`refactor-plan.md` §4④（2026-10-15）曾全绿（`CLIPPY_EXIT=0`，6m58s）；2026-10-17 又跑不通 ⇒ 状态反转源自改名引入的 feature 门控，**以当前实测为准**
-- UI 全量 `pnpm run test` 是 992 passed / 21 failed / 8 skipped（App/Hub 夹具问题、CustomProviderForm 超时），非全绿
+- UI 全量 `pnpm run test` 是 **1013 passed / 0 failed / 8 skipped**（App/Hub 夹具与 CustomProviderForm 超时已修）
 - ⚠️ **Vite 生产构建会 mangle 标识符**，grep 压缩后的 asar 找组件名不可靠（`StartupSplash` 在生产包中 0 命中）；判二进制是否过期要用 `find crates -name '*.rs' -newer <bin>`
 
 ### 3.5 不可过度宣称（`refactor-plan.md` §2 / `audit.md` §2）
@@ -225,7 +227,7 @@ export GOOSE_PATH_ROOT=/tmp/opencode/<your-dir>
 
 | 陷阱 | 症状 | 规避 |
 |------|------|------|
-| `git stash` 局部回退 | 文件整个撤走、unmerged 索引 | 本仓库改名未提交状态禁用 |
+| `git stash` 局部回退 | 文件整个撤走、unmerged 索引 | 改名已提交，已可正常使用；仍优先定点回退 |
 | 只跑 `--lib` 不跑 `--test` | 陈旧的集成断言存活 | 带全 feature 且跑集成测试 |
 | 改一行编一次 Rust | 12m39s/次 | 批量改完再编译 |
 | 发真实模型请求 | 触碰用户网关 | 只用 `/tmp` 严格假端点 |
@@ -256,20 +258,20 @@ export GOOSE_PATH_ROOT=/tmp/opencode/<your-dir>
 | **托盘 GNOME 下不显示** | `Impossible to get basic properties: GDBus.Error`，Electron↔libayatana 属性读取失败，**Cortex 侧无可改之处** | `refactor-plan.md` §0.3 ④ |
 | `config.yaml` 的 `active_provider=custom_lite-gpt` | 用户主动添加，**非残留，勿追查** | `refactor-plan.md` §0 |
 | 「图形化配置」需求 | **已取消**，不要再提 | `refactor-plan.md` §0 |
-| `session_naming` 3 例回归测试 | **补跑需单独授权**（release profile 有触发 v8 破坏性清理的风险） | `refactor-plan.md` §4 末条 |
+| `session_naming` 3 例回归测试 | **已完成**（debug lib 定点 3/0），不再需要单独授权 | `refactor-plan.md` §4 末条 |
 | `nearai`/`pleumrouter` 兼容 shim | 保留未动，勿"顺手清理" | `audit.md` §4.11 |
 | `strip_xml_tags` 的贪婪标签剥离 | 上游行为，改它有回归风险且**未被证明是本例成因** | `audit.md` §4.9 |
 
-**未获批准勿做**：下一批 token 优化候选（chatrecall 逐条上限、image 缩放、缓存感知压缩）、rpm/flatpak 打包、删除旧仓库源码、自行开窗口、超出定点范围的全量 Rust 测试、真实端点验收（交用户，不自行发模型请求）。
+**未获批准勿做**：下一批 token 优化候选（chatrecall 逐条上限、image 缩放、缓存感知压缩）、rpm/flatpak 打包、自行开窗口、超出定点范围的全量 Rust 测试、真实端点验收（交用户，不自行发模型请求）。Windows 构建暂缓，等用户确认「没大 bug」后再做。
 
 ---
 
 ## 8. [需人工确认] 的开放决策
 
-1. **Off 语义**：目录有词表但无「关」的词时，`Off` 应发最轻档还是不发字段？
+1. ✅ **Off 语义（已决策 2026-10-17）**：默认 Off（支持关闭时）或最低档；菜单只显示实际档位；无 off 词时显式 Off 省略字段。
 2. **`reasoning` 三态**：是否给 `ModelInfo` 加三态 enum 让 `false` 可表达？
 3. **`model_capabilities.json` 位置**：配置目录是否合意？是否需 UI 清除入口？
-4. **OpenCode 系根治**：`catalog_provider_id` 接入 canonical 需改 `name_builder.rs`（乙/丙文件），需 TASK 授权
+4. **OpenCode 系根治**：`catalog_provider_id` 已接入 canonical（Phase 1）；`oc-*` 名字规则仍未做，需另行评估
 5. **真实 `~/.config/goose` 时间戳**：硬边界记录（`2026-10-09 17:56:19`）是否修订为实测值（`2026-10-16 15:33:19`），还是清理现场恢复基线？出处是 `FIX-yi` §7.8（**不是** `AUDIT-2026-10-17` §7.8，该节不存在）
 6. **`api_key_env` 坏文件容错**：方案 B/C（跳过+错误可见）是否立项
 7. **G2 提示位置**：桌面端底栏（`ThinkingEffortControl.tsx`）是否也需要同一句可操作提示？（当前只在 ACP option description，出处 `FIX-bing` §9.1 / `AUDIT` §5-E #6）
@@ -290,9 +292,10 @@ ls -la ~/.config/cortex/config.yaml ~/.config/goose/config.yaml 2>&1 || true
 ss -tlnp | grep -E '7863|8787|7865|7866|7911'
 
 # 4. 确认工作区状态与分支
-git branch --show-current        # 期望 composer-ui-refactor
-git rev-parse --short HEAD       # 期望 3bd8520
-git status --short | head -20
+git branch --show-current        # 期望 main
+git rev-parse --short HEAD       # 期望 c07283a（后续以 git log -1 为准）
+git remote -v                    # 期望 origin = RarestCSC/Cortex.git
+git status --short | head -20    # 期望干净
 
 # 5. 批量改完 Rust 后再编译（不要改一行编一次）
 ```

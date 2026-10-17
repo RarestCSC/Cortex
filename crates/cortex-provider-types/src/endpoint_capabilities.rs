@@ -71,6 +71,30 @@ pub struct EndpointModelCapabilities {
     /// which is not the same as an explicit `false`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub can_disable_thinking: Option<bool>,
+    /// A single fixed effort word (`reasoning_effort: "high"`) for relays that
+    /// pin one level instead of publishing a vocabulary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+    /// The model always reasons and cannot be switched to a non-thinking mode.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub only_reasoning: Option<bool>,
+    /// The public catalog's effort vocabulary, carried here only as a fallback
+    /// for silent relays. Not endpoint data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_efforts: Option<Vec<String>>,
+    /// The relay's own input context window. Names differ (`context_length` on
+    /// WorkBuddy, `context_window` on the free lane), so parsing accepts both.
+    /// This is the value the relay will actually serve, which can be smaller
+    /// than the public catalog's for the same model name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<usize>,
+    /// The relay's maximum output tokens, when it declares one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<usize>,
+    /// `supported_endpoint_types` includes `openai-response` when the relay
+    /// serves the Responses API. Saves the first-request 404 probe.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supports_responses_api: Option<bool>,
 }
 
 impl EndpointModelCapabilities {
@@ -88,6 +112,23 @@ impl EndpointModelCapabilities {
                 .and_then(Value::as_str)
                 .map(str::to_string),
             can_disable_thinking: entry.get("can_disable_thinking").and_then(Value::as_bool),
+            reasoning_effort: entry
+                .get("reasoning_effort")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            only_reasoning: entry.get("only_reasoning").and_then(Value::as_bool),
+            canonical_efforts: None,
+            context_window: first_usize(
+                entry,
+                &["context_length", "context_window", "max_context_length"],
+            ),
+            max_output_tokens: first_usize(entry, &["max_output_tokens"]),
+            supports_responses_api: supported_endpoint_types(entry).map(|types| {
+                types.iter().any(|kind| {
+                    kind.eq_ignore_ascii_case("openai-response")
+                        || kind.eq_ignore_ascii_case("responses")
+                })
+            }),
         }
     }
 
@@ -104,20 +145,68 @@ impl EndpointModelCapabilities {
     }
 
     /// The effort levels this endpoint accepts, deduplicated and ordered.
-    /// Empty when it declared no vocabulary.
+    /// Empty when it declared neither a vocabulary nor a fixed word.
     pub fn effort_levels(&self) -> Vec<ThinkingEffort> {
-        let Some(words) = self.reasoning_supported_efforts.as_deref() else {
-            return Vec::new();
-        };
-        let levels: Vec<ThinkingEffort> = words
+        let mut levels: Vec<ThinkingEffort> = self
+            .reasoning_supported_efforts
+            .as_deref()
+            .unwrap_or(&[])
             .iter()
             .filter_map(|word| word.parse::<ThinkingEffort>().ok())
             .collect();
+        // Relays such as `cn:auto` pin one level with `reasoning_effort` and
+        // publish no vocabulary. Treat that word as a one-level menu instead
+        // of falling back to the fixed five.
+        if levels.is_empty() {
+            if let Some(word) = self.reasoning_effort.as_deref() {
+                if let Ok(level) = word.parse::<ThinkingEffort>() {
+                    levels.push(level);
+                }
+            }
+        }
         EFFORT_ORDER
             .iter()
             .copied()
             .filter(|effort| levels.contains(effort))
             .collect()
+    }
+
+    /// Whether the endpoint can turn thinking off. `None` means it did not say.
+    pub fn off_allowed(&self) -> Option<bool> {
+        if let Some(allowed) = self.can_disable_thinking {
+            return Some(allowed);
+        }
+        if let Some(words) = self.reasoning_supported_efforts.as_deref() {
+            if words
+                .iter()
+                .any(|word| word.eq_ignore_ascii_case("none") || word.eq_ignore_ascii_case("off"))
+            {
+                return Some(true);
+            }
+        }
+        if self.only_reasoning == Some(true) {
+            return Some(false);
+        }
+        None
+    }
+
+    /// The lowest level this endpoint accepts. Used when `default` cannot map
+    /// to `Off` because the model cannot disable thinking.
+    pub fn lowest_effort(&self) -> Option<ThinkingEffort> {
+        self.effort_levels().first().copied()
+    }
+
+    /// The word this endpoint uses for `effort`, including a fixed single word.
+    pub fn effort_label(&self, effort: ThinkingEffort) -> Option<String> {
+        if let Some(word) = self.word_for(effort) {
+            return Some(word);
+        }
+        if let Some(word) = self.reasoning_effort.as_deref() {
+            if word.parse::<ThinkingEffort>().ok() == Some(effort) {
+                return Some(word.to_string());
+            }
+        }
+        None
     }
 
     /// The word this endpoint uses for `effort`.
@@ -204,6 +293,24 @@ fn effort_words(value: Option<&Value>) -> Option<Vec<String>> {
         .map(str::to_string)
         .collect();
     (!words.is_empty()).then_some(words)
+}
+
+fn first_usize(entry: &Value, keys: &[&str]) -> Option<usize> {
+    keys.iter()
+        .find_map(|key| entry.get(*key).and_then(Value::as_u64))
+        .and_then(|value| usize::try_from(value).ok())
+        .filter(|value| *value > 0)
+}
+
+fn supported_endpoint_types(entry: &Value) -> Option<Vec<String>> {
+    let types: Vec<String> = entry
+        .get("supported_endpoint_types")?
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect();
+    (!types.is_empty()).then_some(types)
 }
 
 // ---------------------------------------------------------------------------
@@ -620,6 +727,81 @@ mod tests {
         assert!(capabilities.declares_nothing());
         assert_eq!(capabilities.effort_levels(), Vec::<ThinkingEffort>::new());
         assert_eq!(capabilities.word_for(ThinkingEffort::Max), None);
+        assert_eq!(capabilities.context_window, Some(262_144));
+    }
+
+    #[test]
+    fn relay_context_output_and_endpoint_types_are_parsed() {
+        // WorkBuddy: `context_length` + `max_output_tokens` + Responses support.
+        let workbuddy = json!({
+            "id": "global:gpt-6-luna",
+            "context_length": 1000000,
+            "max_output_tokens": 128000,
+            "supported_endpoint_types": ["openai", "openai-response"],
+        });
+        let capabilities = EndpointModelCapabilities::from_models_entry(&workbuddy);
+        assert_eq!(capabilities.context_window, Some(1_000_000));
+        assert_eq!(capabilities.max_output_tokens, Some(128_000));
+        assert_eq!(capabilities.supports_responses_api, Some(true));
+
+        // Free lane: only `context_window`, no output or effort metadata.
+        let free_lane = json!({
+            "id": "oc-deepseek-v4.1-flash-free",
+            "context_window": 262144,
+        });
+        let capabilities = EndpointModelCapabilities::from_models_entry(&free_lane);
+        assert_eq!(capabilities.context_window, Some(262_144));
+        assert_eq!(capabilities.max_output_tokens, None);
+        assert_eq!(capabilities.supports_responses_api, None);
+
+        // A chat-only relay answers the routing question with `false`.
+        let chat_only = json!({
+            "id": "gpt-6-luna",
+            "supported_endpoint_types": ["openai"],
+        });
+        let capabilities = EndpointModelCapabilities::from_models_entry(&chat_only);
+        assert_eq!(capabilities.supports_responses_api, Some(false));
+    }
+
+    #[test]
+    fn fixed_reasoning_effort_is_a_one_level_vocabulary() {
+        let entry = json!({
+            "id": "cn:auto",
+            "supports_reasoning": true,
+            "only_reasoning": true,
+            "reasoning_effort": "high",
+        });
+        let capabilities = EndpointModelCapabilities::from_models_entry(&entry);
+        assert_eq!(capabilities.effort_levels(), vec![ThinkingEffort::High]);
+        assert_eq!(capabilities.off_allowed(), Some(false));
+        assert_eq!(capabilities.lowest_effort(), Some(ThinkingEffort::High));
+        assert_eq!(
+            capabilities.effort_label(ThinkingEffort::High),
+            Some("high".to_string())
+        );
+    }
+
+    #[test]
+    fn can_disable_thinking_allows_off_without_an_off_word() {
+        let entry = json!({
+            "id": "global:gpt-6-astra",
+            "reasoning_supported_efforts": ["low", "medium", "high", "xhigh", "max"],
+            "can_disable_thinking": true,
+        });
+        let capabilities = EndpointModelCapabilities::from_models_entry(&entry);
+        assert_eq!(capabilities.off_allowed(), Some(true));
+        assert_eq!(capabilities.lowest_effort(), Some(ThinkingEffort::Low));
+    }
+
+    #[test]
+    fn only_reasoning_without_can_disable_hides_off() {
+        let entry = json!({
+            "id": "global:gpt-6-luna",
+            "reasoning_supported_efforts": ["low", "medium", "high", "xhigh"],
+            "only_reasoning": true,
+        });
+        let capabilities = EndpointModelCapabilities::from_models_entry(&entry);
+        assert_eq!(capabilities.off_allowed(), Some(false));
     }
 
     #[test]

@@ -1790,12 +1790,34 @@ pub fn create_request_for_model_with_options(
     let is_reasoning_model = model_config.openai_reasoning_for_model(&model_name);
     let supports_xai_effort = supports_xai_reasoning_effort(&model_name);
     let endpoint_capabilities = model_config.endpoint_capabilities();
+    // `default` is the menu's initial stop: off when the model can disable
+    // thinking, otherwise the lowest level it actually accepts. An absent
+    // selection keeps the historical legacy-suffix behaviour; when there is no
+    // legacy suffix either, the same default mapping applies so the wire
+    // matches the menu's "Default".
+    let default_effort = if model_config.off_allowed() {
+        ThinkingEffort::Off
+    } else {
+        model_config.lowest_effort().unwrap_or(ThinkingEffort::Low)
+    };
+    let declared = model_config.declared_effort_levels();
+    let selected_effort = match model_config
+        .request_param::<String>("thinking_effort")
+        .as_deref()
+    {
+        Some("default") => Some(default_effort),
+        Some(value) => value
+            .parse::<ThinkingEffort>()
+            .ok()
+            .filter(|effort| declared.is_empty() || declared.contains(effort))
+            .or(Some(default_effort)),
+        None if legacy_reasoning_effort.is_some() => None,
+        None => Some(default_effort),
+    };
     let reasoning_effort = if supports_xai_effort {
-        model_config
-            .thinking_effort()
-            .and_then(|effort| xai_reasoning_effort_for_thinking(&model_name, effort))
+        selected_effort.and_then(|effort| xai_reasoning_effort_for_thinking(&model_name, effort))
     } else if sends_thinking_effort {
-        match model_config.thinking_effort() {
+        match selected_effort {
             // "off" on a model OpenAI does not own: an invented level such as
             // "minimal" is worse than saying nothing, because providers that
             // manage the disable themselves (OpenRouter answers a rejected
@@ -2001,14 +2023,6 @@ pub fn openai_reasoning_effort_for_endpoint(
         return Some(word);
     }
 
-    let preferred: &[&str] = match effort {
-        ThinkingEffort::Off => &["none", "minimal", "off", "low"],
-        ThinkingEffort::Low => &["low", "minimal", "medium", "high", "xhigh"],
-        ThinkingEffort::Medium => &["medium", "high", "low", "xhigh"],
-        ThinkingEffort::High => &["high", "medium", "xhigh", "low"],
-        ThinkingEffort::Max => &["max", "xhigh", "high", "medium", "low"],
-    };
-
     let catalog = crate::canonical::maybe_get_canonical_model("openai", model_name);
     let catalog_efforts = catalog
         .as_ref()
@@ -2019,6 +2033,52 @@ pub fn openai_reasoning_effort_for_endpoint(
             .as_deref()
             .filter(|words| !words.is_empty())
     });
+
+    // Off has its own rule: honour an off-like word when one exists, otherwise
+    // use the lowest level the model actually accepts. A model that can disable
+    // thinking but publishes no off word is disabled by omitting the field.
+    if effort == ThinkingEffort::Off {
+        match endpoint.and_then(|endpoint| endpoint.off_allowed()) {
+            Some(true) => return None,
+            Some(false) => {
+                return endpoint
+                    .and_then(|endpoint| endpoint.lowest_effort())
+                    .and_then(|low| endpoint.and_then(|endpoint| endpoint.word_for(low)));
+            }
+            None => {}
+        }
+        if let Some(values) = catalog_efforts {
+            if let Some(word) = ["none", "off", "minimal"].iter().find_map(|spelling| {
+                values
+                    .iter()
+                    .find(|value| value.eq_ignore_ascii_case(spelling))
+                    .cloned()
+            }) {
+                return Some(word);
+            }
+            return values
+                .iter()
+                .filter_map(|word| word.parse::<ThinkingEffort>().ok().map(|level| (level, word)))
+                .min_by_key(|(level, _)| match level {
+                    ThinkingEffort::Off => 0,
+                    ThinkingEffort::Low => 1,
+                    ThinkingEffort::Medium => 2,
+                    ThinkingEffort::High => 3,
+                    ThinkingEffort::Max => 4,
+                })
+                .map(|(_, word)| word.clone());
+        }
+        return None;
+    }
+
+    let preferred: &[&str] = match effort {
+        // Handled by the Off branch above; kept for exhaustiveness.
+        ThinkingEffort::Off => &[],
+        ThinkingEffort::Low => &["low", "minimal", "medium", "high", "xhigh"],
+        ThinkingEffort::Medium => &["medium", "high", "low", "xhigh"],
+        ThinkingEffort::High => &["high", "medium", "xhigh", "low"],
+        ThinkingEffort::Max => &["max", "xhigh", "high", "medium", "low"],
+    };
 
     // Nothing anywhere has published a vocabulary for this model, so the only
     // word that can go on the wire without claiming knowledge nobody gave us is
@@ -3520,9 +3580,9 @@ mod tests {
         for (key, value) in expected.as_object().unwrap() {
             assert_eq!(obj.get(key).unwrap(), value);
         }
-        assert!(
-            obj.get("reasoning_effort").is_none(),
-            "reasoning_effort should be omitted when no explicit suffix is provided"
+        assert_eq!(
+            obj["reasoning_effort"], "low",
+            "the default is the lowest level o1 declares"
         );
 
         Ok(())
@@ -3538,8 +3598,8 @@ mod tests {
         for for_streaming in [false, true] {
             for (effort, expected) in [
                 (ThinkingEffort::Low, "low"),
-                (ThinkingEffort::Medium, "medium"),
                 (ThinkingEffort::High, "high"),
+                (ThinkingEffort::Max, "max"),
             ] {
                 let model_config = model_config.clone().with_thinking_effort(effort);
                 let request = create_request(
@@ -3700,12 +3760,12 @@ mod tests {
                 "{model} must not advertise none"
             );
             match published {
-                // A published vocabulary for this family has no word for
-                // stopping, and `low` is its floor.
+                // A published vocabulary without an off-like word maps Off to
+                // its lowest level; it never advertises `none`.
                 Some(_) => assert_eq!(
                     openai_reasoning_effort_for_thinking(&base, ThinkingEffort::Off),
                     Some("low".to_string()),
-                    "{model} Off should map to low, not none"
+                    "{model} Off maps to the lowest declared level, not none"
                 ),
                 // Nothing published for this spelling (`@eu` deployments, the
                 // `-fast` variants): there is no word to send, so none is sent.
@@ -3742,6 +3802,46 @@ mod tests {
             "reasoning_supported_efforts": words,
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn default_selection_maps_to_the_lowest_declared_level_when_off_is_not_supported() {
+        let mut config = ModelConfig::new("global:gpt-6-luna");
+        config.reasoning = Some(true);
+        let mut endpoint = gateway(&["low", "medium", "high", "xhigh"]);
+        endpoint.only_reasoning = Some(true);
+        let config = config.with_endpoint_capabilities(endpoint);
+
+        let request =
+            create_request(&config, "system", &[], &[], &ImageFormat::OpenAi, false).unwrap();
+        assert_eq!(request["reasoning_effort"], "low");
+    }
+
+    #[test]
+    fn default_selection_maps_to_off_when_supported() {
+        let mut config = ModelConfig::new("global:gpt-6-astra");
+        config.reasoning = Some(true);
+        let mut endpoint = gateway(&["low", "medium", "high", "xhigh", "max"]);
+        endpoint.can_disable_thinking = Some(true);
+        let config = config.with_endpoint_capabilities(endpoint);
+
+        let request =
+            create_request(&config, "system", &[], &[], &ImageFormat::OpenAi, false).unwrap();
+        assert!(request.get("reasoning_effort").is_none());
+    }
+
+    #[test]
+    fn explicit_off_without_an_off_word_falls_back_to_the_lowest_level() {
+        let mut config =
+            ModelConfig::new("global:gpt-6-luna").with_thinking_effort(ThinkingEffort::Off);
+        config.reasoning = Some(true);
+        let mut endpoint = gateway(&["low", "medium", "high", "xhigh"]);
+        endpoint.only_reasoning = Some(true);
+        let config = config.with_endpoint_capabilities(endpoint);
+
+        let request =
+            create_request(&config, "system", &[], &[], &ImageFormat::OpenAi, false).unwrap();
+        assert_eq!(request["reasoning_effort"], "low");
     }
 
     #[test]
@@ -3965,12 +4065,13 @@ mod tests {
         }
 
         // These two spellings the catalog resolver normalizes onto the real
-        // `gpt-6.1-sol` record, so they answer from its published vocabulary.
+        // `gpt-6.1-sol` record. Its vocabulary has no off-like word, so `Off`
+        // maps to its lowest declared level.
         for model in ["notgpt-6-1-sol", "catalog.schema.notgpt-6-1-sol"] {
             assert_eq!(
                 openai_reasoning_effort_for_thinking(model, ThinkingEffort::Off),
                 Some("low".to_string()),
-                "{model} resolves onto gpt-6.1-sol, whose vocabulary has no `none`"
+                "{model} resolves onto gpt-6.1-sol, whose lowest level is low"
             );
         }
     }

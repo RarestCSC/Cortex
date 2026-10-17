@@ -159,6 +159,11 @@ pub struct OpenAiProvider {
     /// Guards the one-shot `/v1/models` capability read per provider instance.
     #[serde(skip)]
     endpoint_capabilities_loaded: Arc<OnceCell<()>>,
+    /// The public catalog provider this relay proxies, when the user declared
+    /// one (`catalog_provider_id`). Used only as the canonical fallback after
+    /// the endpoint's own metadata, never to override it.
+    #[serde(skip)]
+    canonical_provider: Option<String>,
 }
 
 /// How long to wait for `/v1/models` before giving up on capability metadata.
@@ -198,6 +203,7 @@ pub struct OpenAiProviderBuilder {
     preserve_thinking_context: bool,
     native_openai: bool,
     capability_cache: Option<Arc<ProbeCache>>,
+    canonical_provider: Option<String>,
 }
 
 impl OpenAiProviderBuilder {
@@ -216,6 +222,7 @@ impl OpenAiProviderBuilder {
             preserve_thinking_context: false,
             native_openai: false,
             capability_cache: None,
+            canonical_provider: None,
         }
     }
 
@@ -297,6 +304,11 @@ impl OpenAiProviderBuilder {
         self
     }
 
+    pub fn canonical_provider(mut self, canonical_provider: Option<String>) -> Self {
+        self.canonical_provider = canonical_provider;
+        self
+    }
+
     pub fn build(self) -> OpenAiProvider {
         let endpoint_identity = endpoint_identity(self.api_client.host(), &self.base_path);
         let responses_api_support = self
@@ -328,6 +340,7 @@ impl OpenAiProviderBuilder {
             capability_cache: self.capability_cache,
             responses_api_support: Arc::new(AtomicU8::new(responses_api_support)),
             endpoint_capabilities_loaded: Arc::new(OnceCell::new()),
+            canonical_provider: self.canonical_provider,
         }
     }
 }
@@ -345,11 +358,19 @@ impl OpenAiProvider {
         &self,
         model_config: &'a ModelConfig,
     ) -> Cow<'a, ModelConfig> {
-        let capabilities =
+        let mut capabilities =
             match endpoint_capabilities::lookup(&self.name, &model_config.model_name).endpoint {
                 Some(capabilities) => capabilities,
                 None => return Cow::Borrowed(model_config),
             };
+        // `with_canonical_limits` may have stored the catalog vocabulary in the
+        // previous capability record. Keep it when the endpoint's fresh record
+        // replaces that record; the endpoint still wins on its own fields.
+        if capabilities.canonical_efforts.is_none() {
+            capabilities.canonical_efforts = model_config
+                .endpoint_capabilities()
+                .and_then(|old| old.canonical_efforts.clone());
+        }
         let default_effort = if model_config.thinking_effort().is_none() {
             capabilities.default_effort()
         } else {
@@ -368,13 +389,24 @@ impl OpenAiProvider {
         } else {
             None
         };
-        if model_config.endpoint_capabilities().is_some()
-            && default_effort.is_none()
-            && reasoning.is_none()
-        {
-            return Cow::Borrowed(model_config);
-        }
-
+        // The relay is the authority for what it actually serves. Fill only
+        // gaps: a user declaration or a canonical alias that already answered
+        // stays untouched.
+        let context_limit = if model_config.context_limit.is_none() {
+            capabilities.context_window
+        } else {
+            None
+        };
+        let max_output_tokens = if model_config.max_tokens.is_none() {
+            capabilities
+                .max_output_tokens
+                .and_then(|tokens| i32::try_from(tokens).ok())
+        } else {
+            None
+        };
+        // Always replace the record when the endpoint answered. A canonical-only
+        // record (silent relay) must not short-circuit the endpoint's own
+        // `supported_endpoint_types` or context fields.
         let mut enriched = model_config
             .clone()
             .with_endpoint_capabilities(capabilities);
@@ -383,6 +415,12 @@ impl OpenAiProvider {
         }
         if let Some(reasoning) = reasoning {
             enriched.reasoning = Some(reasoning);
+        }
+        if let Some(limit) = context_limit {
+            enriched = enriched.with_default_context_limit(Some(limit));
+        }
+        if let Some(tokens) = max_output_tokens {
+            enriched = enriched.with_default_max_tokens(Some(tokens));
         }
         Cow::Owned(enriched)
     }
@@ -735,6 +773,17 @@ impl OpenAiProvider {
         if self.responses_api_state() == RESPONSES_NO {
             return false;
         }
+        // A relay that lists `openai-response` in `supported_endpoint_types`
+        // answered the routing question directly. A negative answer also wins
+        // over the model-name heuristic: `gpt-6*` on a chat-only relay is a
+        // 404, not a capability the user can use.
+        if let Some(capabilities) = endpoint_capabilities::lookup(&self.name, model_name).endpoint {
+            match capabilities.supports_responses_api {
+                Some(true) => return true,
+                Some(false) => return false,
+                None => {}
+            }
+        }
 
         let base_path = Self::normalize_base_path(&self.base_path);
         if self.native_openai && base_path == OPEN_AI_DEFAULT_BASE_PATH {
@@ -1040,30 +1089,41 @@ fn parse_model_ids(json: &serde_json::Value) -> Result<Vec<String>, ProviderErro
     Ok(model_ids)
 }
 
-/// Extract `meta.n_ctx` for `model_name` from a `/v1/models` response body.
+/// Extract the context window for `model_name` from a `/v1/models` response
+/// body: llama.cpp's `meta.n_ctx` first, then the relay's `context_length` /
+/// `context_window` / `max_context_length`.
 fn parse_n_ctx_from_models(json: &serde_json::Value, model_name: &str) -> Option<usize> {
     let data = json.get("data")?.as_array()?;
 
-    let n_ctx = |entry: &serde_json::Value| -> Option<usize> {
+    // llama.cpp publishes `meta.n_ctx`; relays publish the same idea under
+    // `context_length` (WorkBuddy) or `context_window` (free lane). Keep the
+    // llama.cpp field first so its semantics do not change.
+    let context_window = |entry: &serde_json::Value| -> Option<usize> {
         entry
-            .get("meta")?
-            .get("n_ctx")?
-            .as_u64()
+            .get("meta")
+            .and_then(|meta| meta.get("n_ctx"))
+            .and_then(serde_json::Value::as_u64)
             .map(|v| v as usize)
+            .or_else(|| {
+                ["context_length", "context_window", "max_context_length"]
+                    .iter()
+                    .find_map(|key| entry.get(*key).and_then(serde_json::Value::as_u64))
+                    .map(|v| v as usize)
+            })
     };
 
     if let Some(entry) = data
         .iter()
         .find(|e| e.get("id").and_then(|v| v.as_str()) == Some(model_name))
     {
-        return n_ctx(entry);
+        return context_window(entry);
     }
 
     // For single-model servers without --alias, llama.cpp reports the loaded model
     // file path as id rather than the client's alias, so no entry matches above.
-    // Fall back to the sole entry's n_ctx.
+    // Fall back to the sole entry's context window.
     match data.as_slice() {
-        [only] => n_ctx(only),
+        [only] => context_window(only),
         _ => None,
     }
 }
@@ -1126,8 +1186,10 @@ impl Provider for OpenAiProvider {
             .iter()
             .flatten()
             .filter_map(|model| model.context_limit.map(|limit| (model.name.clone(), limit)));
-        let resolver = cortex_provider_types::context_limit::ContextLimitResolver::new(&self.name)
-            .with_configured_limits(configured_limits);
+        let canonical_provider = self.canonical_provider.as_deref().unwrap_or(&self.name);
+        let resolver =
+            cortex_provider_types::context_limit::ContextLimitResolver::new(canonical_provider)
+                .with_configured_limits(configured_limits);
 
         resolver
             .resolve(model, override_limit, || async {
@@ -1365,7 +1427,8 @@ pub fn from_declarative_config(
         .custom_models(custom_models)
         .dynamic_models(config.dynamic_models)
         .skip_canonical_filtering(config.skip_canonical_filtering)
-        .preserve_thinking_context(config.preserves_thinking))
+        .preserve_thinking_context(config.preserves_thinking)
+        .canonical_provider(config.catalog_provider_id))
 }
 
 pub fn parse_custom_headers(s: String) -> HashMap<String, String> {
@@ -1432,6 +1495,7 @@ mod tests {
             capability_cache: None,
             responses_api_support: Arc::new(AtomicU8::new(RESPONSES_UNKNOWN)),
             endpoint_capabilities_loaded: Arc::new(OnceCell::new()),
+            canonical_provider: None,
         }
     }
 
@@ -2348,6 +2412,40 @@ mod tests {
     }
 
     #[test]
+    fn parse_n_ctx_reads_relay_context_fields() {
+        let workbuddy = json!({
+            "data": [
+                { "id": "global:gpt-6-luna", "context_length": 1000000 },
+                { "id": "global:gpt-6.1-sol", "context_length": 1000000 }
+            ]
+        });
+        assert_eq!(
+            parse_n_ctx_from_models(&workbuddy, "global:gpt-6-luna"),
+            Some(1_000_000)
+        );
+
+        let free_lane = json!({
+            "data": [
+                { "id": "oc-deepseek-v4.1-flash-free", "context_window": 262144 }
+            ]
+        });
+        assert_eq!(
+            parse_n_ctx_from_models(&free_lane, "oc-deepseek-v4.1-flash-free"),
+            Some(262_144)
+        );
+    }
+
+    #[test]
+    fn parse_n_ctx_prefers_llama_cpp_meta_over_relay_fields() {
+        let body = json!({
+            "data": [
+                { "id": "qwen3", "meta": { "n_ctx": 32768 }, "context_length": 999999 }
+            ]
+        });
+        assert_eq!(parse_n_ctx_from_models(&body, "qwen3"), Some(32768));
+    }
+
+    #[test]
     fn derive_base_path_not_removing_api_path() {
         let r = derive_base_path("https://opencode.ai/zen/go");
         assert_eq!(r, "https://opencode.ai/zen/go/v1/chat/completions");
@@ -2405,6 +2503,7 @@ mod tests {
             capability_cache: None,
             responses_api_support: Arc::new(AtomicU8::new(RESPONSES_UNKNOWN)),
             endpoint_capabilities_loaded: Arc::new(OnceCell::new()),
+            canonical_provider: None,
         }
     }
 

@@ -1,6 +1,6 @@
 # Cortex 项目架构与代码地图
 
-> 基于 `docs/archive/` 全部历史文档提炼。最后更新：**2026-10-17（经 `AUDIT-REPORT.md` 交叉审计修订）**
+> 基于 `docs/archive/` 全部历史文档提炼。最后更新：**2026-10-17（第五轮：仓库迁移 + CI 守卫 + 测试基线复核）**
 > ⚠️ 本文件的**所有代码路径与符号归属均已逐条对代码库实测**（grep / 读码 / git ls-tree）。
 > ⚠️ 引用归档文档时请注意：`AUDIT-2026-10-17.md` **没有 §7.8、没有 §9**；`§4-C` 应写作 `§5-C`。
 
@@ -11,10 +11,12 @@
 | 项 | 值 |
 |----|-----|
 | 源码根 | `/home/rarestcsc/Cortex` |
-| 分支 | `composer-ui-refactor` |
-| HEAD | `3bd8520` |
-| 状态 | **改名未提交**；不 reset / 不覆盖 / 不提交 / 不推送 |
-| 旧回退副本 | `/home/rarestcsc/Goose_test/goose`（源码 + `.git` 651M 仍在；构建产物已清，回收 11.9G） |
+| 远端 | `https://github.com/RarestCSC/Cortex.git`（private） |
+| 分支 | `main`（fresh history） |
+| HEAD | `c07283a`（后续以 `git log -1` 为准） |
+| 状态 | **工作树干净**；改名已提交，`git stash` 已恢复为正常操作 |
+| 旧回退副本 | **已删除**（`/home/rarestcsc/Goose_test`、`Cortex-goose-backup` 均已清理） |
+| CI 守卫 | `.github/workflows/dead-classes.yml`（push/PR 到 `main` 自动跑；run `39031487176` success） |
 | 已装正式版 | 1.54.0；上游 Goose 1.54.0 仍在 `/usr/bin/goose`，两者并存、数据与深链互不干扰 |
 | crate 数 | 15 个（`goose*` → `cortex*` 改名结果） |
 | 数据/配置隔离根 | `GOOSE_PATH_ROOT`（绝对路径）；钥匙串落 `~/.local/share/keyrings/login.keyring` |
@@ -90,7 +92,7 @@ UI (CustomProviderForm.tsx)
 | **思考强度控件** | `ui/desktop/src/components/settings/models/bottom_bar/ThinkingEffortControl.tsx` | `choices`, `preview`, ACP option description | G2 可操作提示注入、无 i18n 新增键。⚠️ 提示当前**只在 ACP option description**，底栏是否也需要 = 未决项（`FIX-bing` §9.1 / `AUDIT` §5-E #6） |
 | **模型弹层** | `ui/desktop/src/components/settings/models/bottom_bar/ComposerModelPopover.tsx` | `toggleProvider`, `placement.maxHeight` | 折叠状态、弹层高度修复 |
 | **供应商管理** | `ui/desktop/src/components/settings/providers/ComposerProviderManager.tsx` | `isEditable ?? true`, `setCustom` | 新建时字段全显示、initialDataIdentity 语义 |
-| **死类扫描脚本** | `ui/desktop/scripts/scan-dead-classes.py` | 对照 live dev server 生成 CSS 普查 | CI 守卫候选，`ui/desktop/src` 共 520 个源文件 → **511 处 / 119 种 / 71 文件** |
+| **死类扫描脚本** | `ui/desktop/scripts/scan-dead-classes.py` | 对照 live dev server 生成 CSS 普查 | 已接入 CI（`.github/workflows/dead-classes.yml`）；修正口径后真实 **394 处 / 85 种 / 60 文件 → 0**（旧 511/119/71 为含假阳性的快照） |
 
 ### 2.2b UI 剥图占位文案（三处 format 层各一份）
 
@@ -131,27 +133,27 @@ This tool result included an image that was omitted because image input is turne
 
 1. **`ModelInfo.reasoning` 是非 Option `bool`** → 只发布 `true`，`false` 视为「没说」，让启发式/G1 作答（丙 §3.2）。且**非 `custom_*` 的内置声明式定义连 `true` 都不注入**（让内置定义继续作目录的最后一搏）
 2. **`sends_thinking_effort()` 为菜单与出站的单一判定**（乙 A2），`is_reasoning_model()` 与 `openai_reasoning_for_model()` 语义不变（乙 §8.1）。`is_reasoning_model()` 有 10 个生产调用点，其中 2 处语义与档位菜单无关 ⇒ 不要改
-3. **端点声明了但不含某档时用它声明过的词兜底，唯独 `Off` 在端点无「关」的词时省略字段**（丙 ②）。`accepts` 是 `openai_reasoning_effort_for_endpoint` 内的局部闭包，不是独立函数
+3. **端点声明了但不含某档时用它声明过的词兜底，唯独 `Off` 在端点无「关」的词时省略字段**（丙 ②）；**默认档 = `Off`（支持关闭时）或最低档**，菜单只显示实际声明档位，无数据才回退固定五档；不支持 `Off` 的模型菜单不出现 `Off`，遗留值落到最低档。`accepts` 是 `openai_reasoning_effort_for_endpoint` 内的局部闭包，不是独立函数
 4. **权威值契约**：`update_custom_provider` 不再兜底继承 `supports_vision`/`reasoning`，入参即权威（甲 §7.1、丙 D5-b）
-5. **`catalog_provider_id` 目前不参与 canonical 查找**（SUMMARY §7.5、`AUDIT` §2 ①；`canonical/` 与 `model_config.rs` 中该字段零命中），OpenCode 系需另立项
+5. **`catalog_provider_id` 现在作为可信 canonical 别名参与查找**（Phase 1）：`custom_lite-gpt` + `catalog_provider_id: "openai"` 会解析 `openai/gpt-6-luna`；端点自己声明的 context/effort 仍然优先。未设置别名时仍走名字启发式。✅ 已验证（`cortex-provider-types` 682/0、`cortex --lib` 2295/0）
 6. **Rust 改动要批量**——改一个字符串触发 release 增量 12m39s（级联 cortex→cortex-mcp→cortex-cli＋链接 290MB）
 7. **剥图占位文案已诚实化**：`model does not support vision` → `image input is turned off for this model`，三处 format 层各一份且被测试断言（`BUG-REPORT-custom-provider-vision.md` §7 附带项）
 
 ---
 
-## 4. 测试与验证基线（2026-10-17 审计口径）
+## 4. 测试与验证基线（2026-10-17 第五轮复核口径）
 
 | 测试层 | 命令 | 结果 |
 |--------|------|------|
-| `cortex-provider-types` | `cargo test -p cortex-provider-types --lib` | **670 passed** |
-| `cortex-providers` | `cargo test -p cortex-providers --lib` | **269 passed** |
-| `cortex --lib` | `cargo test -p cortex --lib --features scheduler,acp-http,tree-sitter,code-mode` | **2276 passed / 8 failed**（8 个真失败：prompt_manager 快照、config::extensions、chatgpt_codex、gcpauth×3、sources×2） |
-| `cortex-cli --lib` | `cargo test -p cortex-cli --lib` | **352 passed / 1 failed**（`logging.rs:55` 改名遗留） |
-| ACP 集成测试 | 8 个 `acp_*_test.rs` + `session_id_propagation_test` + `custom_provider_command_auth_test` + `declared_vision_registry` = **11 个测试二进制** | **8 绿 3 红**（3 个失败已分类：陈旧断言、死断言、预算过紧） |
+| `cortex-provider-types` | `cargo test -p cortex-provider-types --lib` | **682 passed / 0 failed**（+12：context / 档位 / canonical 词表） |
+| `cortex-providers` | `cargo test -p cortex-providers --lib` | **272 passed / 0 failed**（+2：relay context 解析） |
+| `cortex --lib` | `cargo test -p cortex --lib --features scheduler,acp-http,tree-sitter,code-mode,platform-apps,chat-recall,rustls-tls` | **2295 passed / 0 failed**（旧命令的 8 个失败已全部修复：feature 集 + HOME 隔离） |
+| `cortex-cli --lib` | `cargo test -p cortex-cli --lib` | **353 passed / 0 failed / 1 ignored**（P1-8 已修；logging 测试现在会清 `GOOSE_PATH_ROOT`） |
+| ACP 集成测试 | 8 个 `acp_*_test.rs` + `session_id_propagation_test` + `custom_provider_command_auth_test` + `declared_vision_registry` = **11 个测试二进制** | **11/11 全绿**（全量重跑：3+3+21+2+13+1+59+35+4+2+1） |
 | UI TypeScript | `cd ui/desktop && node ../node_modules/typescript/bin/tsc --noEmit` | 干净 |
-| UI Vitest | `cd ui/desktop && pnpm run test` | **992 passed / 21 failed / 8 skipped**（App/Hub 夹具问题、CustomProviderForm 超时） |
-| 死类扫描 | `cd ui/desktop && python3 scripts/scan-dead-classes.py` | 520 个源文件 → **511 处 / 119 种 / 71 文件**（2026-10-17 15:25 快照口径）。`CustomProviderForm.tsx` 的 **15 处选中态死类已换**，但快照仍记录本文件 3 类死类（`border-border`/`border-yellow-500`/`bg-red-900`）⇒ **「该文件零死类」的说法待复跑脚本确认**，见 `PROGRESS.md` D15 |
+| UI Vitest | `cd ui/desktop && pnpm run test` | **1013 passed / 0 failed / 8 skipped**（21 个测试侧失败已修） |
+| 死类扫描 | `cd ui/desktop && bash scripts/check-dead-classes.sh` | 520 个源文件 → **0**（`SCANNED_FILES=520 TOTAL=0 KINDS=0 FILES_AFFECTED=0`，本地与 GitHub Actions 双绿） |
 
-> ⚠️ **口径提醒**：上表 `cortex --lib` 的 2276/2284 只覆盖该 crate 的 lib 测试，**不含** `cortex-cli --lib`（352/1）、UI vitest（992/21/8）与 11 个 ACP 测试二进制，不可读成「全仓库 99.6%」。
+> ⚠️ **口径提醒**：上表 `cortex --lib` 的 2295 只覆盖该 crate 的 lib 测试，**不含** `cortex-cli --lib`（353/0）、UI vitest（1013/0/8）与 11 个 ACP 测试二进制。各层均已分别全绿；旧命令的 8 个失败是测试环境问题（feature 集 + HOME 隔离），不是产品回归，已修复并验证。
 
 > **注意**：`cargo clippy --all-targets -- -D warnings` 在本分支跑不通（feature 门控 + 改名遗留），三轮均沿用可行写法：`-p <crate>` 分开 + `--features scheduler,acp-http` + `-A dead_code`。
