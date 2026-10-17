@@ -125,7 +125,7 @@
 3. **提交/推送**：已完成（`07d51af` + `e6c919c`，CI 守卫 success）。
 4. **产品决策**：P1-3 三态（需要具体误判模型）。
 5. **真机/装版**：Phase 1+2 真机验收已通过（2026-10-17 晚，dev 二进制 + 隔离根）；P1-10 developer 角色验收暂缓。
-6. **P2 技术债**：按 `TECH-DEBT.md` §5 逐步清理；Windows 构建暂缓。
+6. **P2 技术债**：P2-4 / P2-3 / P2-6 已完成（2026-10-18，见 `TECH-DEBT.md` §5）；剩 P2-2（隔离 helper，缓做）、P2-1（等 key）；Windows 构建暂缓。
 
 ---
 
@@ -295,3 +295,19 @@
 
 - 用户覆盖 UI、缓存 provenance UI、`credits` / `supports_tool_call`。
 - 统一编译与全量测试。
+
+---
+
+## 🆕 2026-10-18 第七轮：P2 收尾
+
+| 项 | 交付 |
+|----|------|
+| P1-4 | `cortex capability-cache [--clear]`（查看/清除 G1 探测缓存；位置不动） |
+| P1-9 | 底栏弹层显示 ACP option description（沉默型网关提示；零 schema/i18n） |
+| P2-4 | `~/.config/goose` 时间戳基线修订为 `2026-10-16 15:33:19.316532991`（用户手工改配置；已确认） |
+| P2-3 | `clippy --all-targets -D warnings` **exit 0**（新 feature 集下；修 bedrock 测试构造器缺 `endpoint_capabilities`）。网络无关，纯 feature 集 + 遗留构造器问题 |
+| P2-6 | `.snap.new` 已删、`CustomProviderForm` 超时已修、`gemini_cli` shim 读取改 5s 轮询（8 连跑通过） |
+
+验证：`cortex-cli --lib` 353/0；`tsc` 干净；bottom_bar vitest 36/36；clippy `-p cortex --features scheduler -D warnings` 干净。
+
+剩：P2-2（隔离 helper，缓做）、P2-1（等 key）、P1-3（等案例）、P1-10 与 Windows（暂缓）。
