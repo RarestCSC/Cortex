@@ -219,4 +219,4 @@ cd ui/desktop && bash scripts/check-dead-classes.sh
 2. **`reasoning` 三态**：是否给 `ModelInfo.reasoning` 加 `Option<bool>` 或三态 enum，让用户能显式表达「不推理」？
 3. **探测缓存位置**：✅ 已决策（2026-10-18）——位置不动，新增 `cortex capability-cache [--clear]` 查看/清除。
 4. **G2 提示位置**：桌面端底栏（`ThinkingEffortControl.tsx`）是否也需要同一句可操作提示？
-5. **真实 `~/.config/goose` 时间戳**：硬边界记录是否修订为实测值 `2026-10-16 15:33:19`（出处 `FIX-yi` §7.8），还是清理现场恢复基线 `2026-10-09 17:56:19`？
+5. ✅ **真实 `~/.config/goose` 时间戳（已决策 2026-10-18）**：硬边界基线修订为实测值 `2026-10-16 15:33:19.316532991`（出处 `FIX-yi` §7.8），判定为用户手工改配置；不再作为回归信号基线的旧值。

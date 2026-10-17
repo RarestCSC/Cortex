@@ -131,7 +131,7 @@
 | OpenCode 系根治路线 | `SUMMARY` §7.5 建议路线 ①（`catalog_provider_id` 参与 canonical 查找） | `AUDIT` §4.4 实测模型名 `oc-*` 与目录对不上（`strip_common_prefixes` 无 `oc-`），改代码也接不通 | **需新立项设计改动，当前靠 workaround**（`PROGRESS` D14/P1-1） |
 | `reasoning: false` 能否表达 | 丙 §3.2 刻意只发布 `true` | `AUDIT`/`FIX-bing` §9.1 #5 称需产品决策加三态 | **产品决策待定**（`PROGRESS` P1-3） |
 | `model_capabilities.json` 位置 | vision §7 建议配置目录 | `AUDIT` §5-E #7 用户可能偏好其他位置 | **待用户确认**（`PROGRESS` P1-4） |
-| 真实 `~/.config/goose` 时间戳 | `refactor-plan` 硬边界要求恒为 `2026-10-09 17:56:19` | `FIX-yi` §7.8 实测 `2026-10-16 15:33:19` 已被用户手工改动 | **需确认修订硬边界还是清理现场**（`PROGRESS` P2-4） |
+| 真实 `~/.config/goose` 时间戳 | `refactor-plan` 硬边界要求恒为 `2026-10-09 17:56:19` | `FIX-yi` §7.8 实测 `2026-10-16 15:33:19` 已被用户手工改动 | ✅ **已修订（2026-10-18）**：基线改为 `2026-10-16 15:33:19.316532991`，判定为用户手工配置；见 `AGENTS` §1.1 |
 | G2 提示位置 | `FIX-bing` §9.1 #4 只在 ACP option description | `AUDIT` §5-E #6 问底栏是否也需要 | **取决于真机观感，尚未决策**（`PROGRESS` P1-9） |
 | `ui/desktop/src/api` | `AGENTS.md` 旧版禁止 import / 重建该路径 | **该路径在工作区、git HEAD、全部归档文档中均不存在** | 已在修订版中删除，改为指向真实的 `ui/acp-client/src/generated/` |
 
