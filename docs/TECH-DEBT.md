@@ -206,7 +206,7 @@ cd ui/desktop && bash scripts/check-dead-classes.sh
 | **P2** | `api_key_env` 坏文件跳过 + 错误可见化 | 1 天 | 方案 B/C |
 | **P2** | 测试隔离漏洞修复（隔离 HOME） | 0.5 天 | 技能测试专用 |
 | ✅ P2 | `session_naming` 3 例回归补跑 | — | **已完成**：debug lib 定点 3/0 |
-| **P2** | `cargo clippy --all-targets` 跑通整理 | 1-2 天 | Feature 门控重构 |
+| **P2** | `cargo clippy --all-targets` 跑通整理 | — | **基本已通**：新 feature 集下 `clippy --all-targets -D warnings` **exit 0**（2026-10-18 实测，仅修 1 处 bedrock 测试构造器缺新字段）。⚠️ 仅裸 `--features aws-providers` 单独跑仍有 24 个既有编译错误（缺 `scheduler` feature），与 clippy 无关 |
 | **P2** | v8 build script 的 `v8-goose-*` 文件名改名 | 0.5 天 | 依赖上游，风险待评估 |
 | ✅ P2 | token 优化第二批（chatrecall 逐条上限 / image 缩放 / 缓存感知压缩） | — | **已取消**（用户 2026-10-17 决定不做） |
 | **暂缓** | Windows 构建 | 待定 | 用户要求等没大 bug 后再做 |

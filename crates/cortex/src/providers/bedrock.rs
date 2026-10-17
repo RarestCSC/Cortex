@@ -1202,6 +1202,7 @@ mod tests {
                 request_params: None,
                 reasoning: None,
                 supports_vision: None,
+                endpoint_capabilities: None,
                 request_headers: None,
             },
         )
