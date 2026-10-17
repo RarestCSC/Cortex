@@ -18,7 +18,6 @@ import { View, ViewOptions } from '../utils/navigationUtils';
 import { useConfig } from './ConfigContext';
 import { getEffectiveWorkingDir, getInitialWorkingDir } from '../utils/workingDir';
 import { createSession } from '../sessions';
-import LoadingIndicator from './LoadingIndicator';
 import { UserInput } from '../types/message';
 import {
   createNextChatExtensionDraft,
@@ -51,6 +50,7 @@ export default function Hub({
   const { extensionsList } = useConfig();
   const { currentModel, currentProvider } = useModelAndProvider();
   const [workingDir, setWorkingDir] = useState(getInitialWorkingDir());
+  const workingDirRef = useRef(workingDir);
   const userSelectedWorkingDirRef = useRef(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [isCreatingSession, setIsCreatingSession] = useState(false);
@@ -71,7 +71,10 @@ export default function Hub({
   useEffect(() => {
     let active = true;
     void getEffectiveWorkingDir().then((dir) => {
-      if (active && !userSelectedWorkingDirRef.current) setWorkingDir(dir);
+      if (active && !userSelectedWorkingDirRef.current) {
+        workingDirRef.current = dir;
+        setWorkingDir(dir);
+      }
     });
     return () => {
       active = false;
@@ -85,6 +88,7 @@ export default function Hub({
     const requested = searchParams.get('workingDir');
     if (!requested) return;
     userSelectedWorkingDirRef.current = true;
+    workingDirRef.current = requested;
     setWorkingDir(requested);
     searchParams.delete('workingDir');
     setSearchParams(searchParams, { replace: true });
@@ -138,7 +142,14 @@ export default function Hub({
 
   const handleWorkingDirChange = useCallback((dir: string) => {
     userSelectedWorkingDirRef.current = true;
+    workingDirRef.current = dir;
     setWorkingDir(dir);
+    // The prepared session (created by the automatic probe, or by a previous
+    // submit) is bound to the *old* directory. Updating only the label would
+    // send the next message into the old cwd, so drop it and let the next
+    // submit create a session for the newly selected directory.
+    preparedSessionRef.current = null;
+    setPreparedSession(null);
   }, []);
 
   const createHubSession = useCallback((): Promise<Session | null> => {
@@ -158,7 +169,9 @@ export default function Hub({
 
         // Resolve the effective directory at submit time: the IPC lookup may still
         // be pending when the user submits, and an explicit pick must win.
-        const dir = userSelectedWorkingDirRef.current ? workingDir : await getEffectiveWorkingDir();
+        const dir = userSelectedWorkingDirRef.current
+          ? workingDirRef.current
+          : await getEffectiveWorkingDir();
         const session = await createSession(dir, sessionOptions);
         preparedSessionRef.current = session;
         setPreparedSession(session);
@@ -176,7 +189,24 @@ export default function Hub({
     })();
     creatingSessionRef.current = creation;
     return creation;
-  }, [extensionsList, nextChatExtensionDraft, workingDir]);
+  }, [extensionsList, nextChatExtensionDraft]);
+
+  // A prepared session can outlive a directory change (including one that
+  // happens while `createSession` is in flight). Recreate it rather than
+  // sending the next message into a cwd the user no longer selected.
+  const createHubSessionForCurrentDir = useCallback(async (): Promise<Session | null> => {
+    let session = await createHubSession();
+    if (!session) return null;
+    if (
+      userSelectedWorkingDirRef.current &&
+      session.working_dir !== workingDirRef.current
+    ) {
+      preparedSessionRef.current = null;
+      setPreparedSession(null);
+      session = await createHubSession();
+    }
+    return session;
+  }, [createHubSession]);
 
   useEffect(() => {
     if (!currentModel || !currentProvider || autoPrepareAttemptedRef.current) return;
@@ -185,7 +215,7 @@ export default function Hub({
   }, [currentModel, currentProvider, createHubSession]);
 
   const prepareSessionModel = async (model: Model, getDraft: () => UserInput) => {
-    const session = await createHubSession();
+    const session = await createHubSessionForCurrentDir();
     if (!session) throw new Error('Could not create session');
     await acpSetSessionModel(session.id, model.provider, model.name);
     const initialMessage = getDraft();
@@ -203,7 +233,7 @@ export default function Hub({
     if (!(images.length > 0 || userMessage.trim())) return;
 
     const draftAtSubmit = draftRef.current;
-    const session = await createHubSession();
+    const session = await createHubSessionForCurrentDir();
     if (!session) return;
 
     window.dispatchEvent(new CustomEvent(AppEvents.SESSION_CREATED));
@@ -231,7 +261,7 @@ export default function Hub({
       return;
     }
 
-    const session = await createHubSession();
+    const session = await createHubSessionForCurrentDir();
     if (!session) return;
 
     window.dispatchEvent(new CustomEvent(AppEvents.SESSION_CREATED));
@@ -290,12 +320,6 @@ export default function Hub({
           />
         </ChatInputCard>
       </div>
-
-      {isCreatingSession && (
-        <div className="absolute bottom-4 left-4 z-20 pointer-events-none">
-          <LoadingIndicator chatState={ChatState.LoadingConversation} />
-        </div>
-      )}
     </div>
   );
 }

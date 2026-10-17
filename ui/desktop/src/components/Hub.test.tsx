@@ -24,6 +24,7 @@ type ChatInputCapture = {
     start: () => Promise<void>;
   };
   onNextChatExtensionDraftChange?: (draft: { selectedNames: Set<string> }) => void;
+  onWorkingDirChange?: (dir: string) => void;
 };
 
 let mockCurrentModel: string | null = null;
@@ -190,6 +191,28 @@ describe('Hub', () => {
     await submit();
 
     expect(createSession).toHaveBeenCalledWith('/tmp/goose', { allExtensions: [] });
+  });
+
+  it('creates the session in the newly selected working directory', async () => {
+    mockCurrentModel = 'alpha-model';
+    mockCurrentProvider = 'alpha';
+    vi.mocked(createSession).mockImplementation(
+      async (dir) => ({ id: `session-${dir}`, working_dir: dir }) as Session
+    );
+    renderHub({ current: DRAFT });
+    await waitFor(() => expect(createSession).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      captured.chatInput?.onWorkingDirChange?.('/home/rarestcsc/project');
+    });
+    await submit();
+
+    await waitFor(() =>
+      expect(createSession).toHaveBeenLastCalledWith(
+        '/home/rarestcsc/project',
+        expect.anything()
+      )
+    );
   });
 
   it('hands the draft to the input', () => {

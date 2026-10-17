@@ -246,6 +246,8 @@ export GOOSE_PATH_ROOT=/tmp/opencode/<your-dir>
 | GNOME 下 `Icon=cortex` 写相对名 | 被解析成 `ThemedIcon` 回退占位图 | 写**绝对路径** |
 | 测试失败就归因本次改动 | 误报回归 | 回旧仓库跑同一用例确认 |
 | 后端 `warn!` 不落盘 | 根因查不到 | `onStderrData` 必须落 `warn`/`error` |
+| `tree` 看不到 `.agents`/`.config` | 模型说目录为空 | 默认隐藏 dotfile，但会列出被省略项；需要时传 `show_hidden: true` |
+| 历史会话加载慢 | 一条消息也要等几秒 | `session/load` 不同步 `lease.start()`；扩展后台预热 |
 | 嵌套 `<button>` | DOM 非法 + 点击冒泡误折叠父级 | 用 `div` 包兄弟 button |
 
 ---

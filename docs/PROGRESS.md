@@ -311,3 +311,16 @@
 验证：`cortex-cli --lib` 353/0；`tsc` 干净；bottom_bar vitest 36/36；clippy `-p cortex --features scheduler -D warnings` 干净。
 
 剩：P2-2（隔离 helper，缓做）、P2-1（等 key）、P1-3（等案例）、P1-10 与 Windows（暂缓）。
+
+---
+
+## 🆕 2026-10-18 第八轮：真机 bug 修复
+
+| Bug | 根因 | 修复 | 验证 |
+|-----|------|------|------|
+| 欢迎页常驻「正在加载对话」 | Hub 自动 prepare 时固定显示底部 `LoadingIndicator` | 移除欢迎页底部指示器 | `tsc` 干净；Hub 15/15 |
+| 切换工作目录后实际 cwd 不变 | prepared session 仍绑定旧目录，只改了 UI label | 切换目录时失效 prepared session；`createHubSessionForCurrentDir` 校验 `working_dir`；`workingDirRef` 防竞态 | 新增回归测试；Hub 15/15 |
+| 历史会话加载慢（一条消息也慢） | `session/load` 同步启动所有扩展，`context7` stdio MCP 拉进程耗时 | 扩展改为后台预热，`session/load` 立即返回 | `acp_server_test` 59/0 |
+| tree 看不到 `.agents`/`.config` | `ignore::WalkBuilder.hidden(true)` 忽略 dotfile，模型误判空目录 | 新增 `show_hidden` 参数；默认隐藏时输出「hidden entries omitted: ...」 | tree 6/6 |
+
+> 供应商更新失败是 dev 环境 `GOOSE_DISABLE_KEYRING=1` + 隔离根无 secret 所致，不是代码 bug；隔离根填一次 key 即恢复。

@@ -148,3 +148,7 @@
 | `/tmp/opencode/wb2api-effort-probe/mock_server.py` | **该目录已不存在**（`FIX-yi` §9 勘误） |
 | 「A1 会让 B1 白做」 | **已被 `FIX-yi` §3.2 自己推翻**（`model.rs` 的 `self.reasoning.or_else(...)` 优先采用显式声明）。勿据此推导 |
 | vision 报告 C1/C3 的根因 | `custom_` 前缀剥除（方案 B）**已于 2026-10-15 落地**，故 C1 **不是它的复现** |
+
+### 【tree 默认忽略 dotfile】-【`.agents`/`.config` 存在但模型说目录是空的】-【`developer/tree.rs` 的 `ignore::WalkBuilder.hidden(true)` 会跳过所有 dot 开头的条目】-【默认保持隐藏，但输出「hidden entries omitted: ...」；需要时传 `show_hidden: true`。不要让工具在隐藏项存在时只回 `(empty directory)`】
+
+### 【session/load 不要同步启动扩展】-【历史会话只有一条消息也要等几秒】-【`prepare_acp_session_agent` 原先 `await lease.start()`，stdio MCP（如 context7 的 npx）会阻塞整个加载】-【扩展改为后台预热；`session/load` 立即返回。扩展本来就懒启动，代价只是响应里不再带 `extensionResults`】

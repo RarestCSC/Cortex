@@ -159,7 +159,7 @@ impl DeveloperClient {
             )),
             Tool::new(
                 "tree".to_string(),
-                "List a directory tree with line counts. Traversal respects .gitignore rules.".to_string(),
+                "List a directory tree with line counts. Traversal respects .gitignore rules. Hidden (dot) entries are omitted by default and named in the output; pass show_hidden: true to include them.".to_string(),
                 Self::schema::<TreeParams>(),
             )
             .annotate(ToolAnnotations::from_raw(

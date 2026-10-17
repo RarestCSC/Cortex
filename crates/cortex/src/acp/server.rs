@@ -1138,18 +1138,27 @@ impl GooseAcpAgent {
             .await?;
         self.apply_acp_extension_overrides(cx, &agent, session)
             .await?;
-        // Leases start extensions on first use anyway; starting them here is
-        // what lets the session response report extensions that fail.
-        let extension_results = agent
-            .extension_manager
-            .current_lease(&session.id)
-            .await
-            .internal_err()?
-            .start()
-            .await;
+        // Starting a stdio MCP server (e.g. context7 via npx) can take seconds.
+        // This used to block `session/load`, so opening any stored session —
+        // even with one message — waited for every extension. The lease starts
+        // extensions on first use anyway, so warm them in the background and
+        // return the session immediately. Failures are still logged; the
+        // response simply no longer carries `extensionResults`.
+        let extension_manager = agent.extension_manager.clone();
+        let session_id = session.id.clone();
+        tokio::spawn(async move {
+            match extension_manager.current_lease(&session_id).await {
+                Ok(lease) => {
+                    let _ = lease.start().await;
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "failed to start extensions in the background");
+                }
+            }
+        });
         self.spawn_provider_inventory_refresh(session, &agent);
 
-        Ok((agent, extension_results))
+        Ok((agent, Vec::new()))
     }
 
     async fn prepare_session_for_activation(

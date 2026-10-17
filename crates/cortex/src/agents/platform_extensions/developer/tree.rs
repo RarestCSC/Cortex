@@ -12,6 +12,10 @@ pub struct TreeParams {
     pub path: String,
     #[serde(default = "default_depth")]
     pub depth: u32,
+    /// Include hidden (dot) entries. Defaults to false; when false, the output
+    /// names the hidden entries that were omitted so the caller can ask again.
+    #[serde(default)]
+    pub show_hidden: bool,
 }
 
 fn default_depth() -> u32 {
@@ -32,7 +36,7 @@ impl TreeTool {
 
     pub fn tree(&self, params: TreeParams) -> CallToolResult {
         let root = PathBuf::from(&params.path);
-        self.tree_at(root, params.depth)
+        self.tree_at(root, params.depth, params.show_hidden)
     }
 
     pub fn tree_with_cwd(&self, params: TreeParams, working_dir: Option<&Path>) -> CallToolResult {
@@ -46,10 +50,10 @@ impl TreeTool {
                 .unwrap_or_else(|| PathBuf::from("."))
                 .join(path)
         };
-        self.tree_at(root, params.depth)
+        self.tree_at(root, params.depth, params.show_hidden)
     }
 
-    fn tree_at(&self, root: PathBuf, depth: u32) -> CallToolResult {
+    fn tree_at(&self, root: PathBuf, depth: u32, show_hidden: bool) -> CallToolResult {
         if !root.exists() {
             return CallToolResult::error(vec![ContentBlock::text(format!(
                 "Path does not exist: {}",
@@ -70,13 +74,22 @@ impl TreeTool {
             Some(depth as usize)
         };
 
-        let mut tree = collect_tree(&root, max_depth);
+        let mut tree = collect_tree(&root, max_depth, show_hidden);
         tree.compute_total_lines();
 
         let mut output = String::new();
         tree.render_into(0, &mut output);
         if output.is_empty() {
             output.push_str("(empty directory)");
+        }
+        if !show_hidden {
+            let hidden = hidden_children(&root);
+            if !hidden.is_empty() {
+                output.push_str(&format!(
+                    "\n(hidden entries omitted: {}. Pass show_hidden: true to include them.)",
+                    hidden.join(", ")
+                ));
+            }
         }
 
         if output.len() > OUTPUT_LIMIT_BYTES {
@@ -181,14 +194,14 @@ impl DirectoryNode {
     }
 }
 
-fn collect_tree(root: &Path, max_depth: Option<usize>) -> DirectoryNode {
+fn collect_tree(root: &Path, max_depth: Option<usize>, show_hidden: bool) -> DirectoryNode {
     let mut builder = WalkBuilder::new(root);
     builder.git_ignore(true);
     builder.git_exclude(true);
     builder.git_global(true);
     builder.require_git(false);
     builder.ignore(true);
-    builder.hidden(true);
+    builder.hidden(!show_hidden);
 
     if let Some(depth) = max_depth {
         builder.max_depth(Some(depth + 1));
@@ -219,6 +232,31 @@ fn collect_tree(root: &Path, max_depth: Option<usize>) -> DirectoryNode {
     }
 
     tree
+}
+
+/// Names of hidden immediate children that a default tree walk omitted.
+/// Naming them prevents the caller from concluding that a directory with only
+/// dot entries (`.agents/`, `.config/`) is empty.
+fn hidden_children(root: &Path) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut hidden: Vec<String> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if !name.starts_with('.') {
+                return None;
+            }
+            let is_dir = entry
+                .file_type()
+                .map(|entry| entry.is_dir())
+                .unwrap_or(false);
+            Some(if is_dir { format!("{name}/") } else { name })
+        })
+        .collect();
+    hidden.sort();
+    hidden
 }
 
 fn relative_components(path: &Path) -> Option<Vec<String>> {
@@ -283,6 +321,7 @@ mod tests {
         let result = tool.tree(TreeParams {
             path: dir.path().display().to_string(),
             depth: 2,
+            show_hidden: false,
         });
 
         let text = extract_text(&result);
@@ -301,6 +340,7 @@ mod tests {
         let result = tool.tree(TreeParams {
             path: dir.path().display().to_string(),
             depth: 1,
+            show_hidden: false,
         });
 
         let text = extract_text(&result);
@@ -322,12 +362,43 @@ mod tests {
         let result = tool.tree(TreeParams {
             path: dir.path().display().to_string(),
             depth: 2,
+            show_hidden: false,
         });
 
         let text = extract_text(&result);
         assert!(text.contains("visible.rs"));
         assert!(!text.contains("ignored"));
         assert!(!text.contains("debug.log"));
+    }
+
+    #[test]
+    fn tree_names_hidden_entries_instead_of_claiming_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join(".agents/skills")).unwrap();
+        fs::create_dir_all(dir.path().join(".config")).unwrap();
+
+        let tool = TreeTool::new();
+        let omitted = tool.tree(TreeParams {
+            path: dir.path().display().to_string(),
+            depth: 2,
+            show_hidden: false,
+        });
+        let text = extract_text(&omitted);
+        assert!(text.contains("(empty directory)"));
+        assert!(
+            text.contains(".agents/") && text.contains(".config/"),
+            "hidden children must be named: {text}"
+        );
+
+        let included = tool.tree(TreeParams {
+            path: dir.path().display().to_string(),
+            depth: 2,
+            show_hidden: true,
+        });
+        let text = extract_text(&included);
+        assert!(text.contains(".agents/"));
+        assert!(text.contains(".config/"));
+        assert!(!text.contains("hidden entries omitted"));
     }
 
     #[test]
@@ -346,6 +417,7 @@ mod tests {
         let result = tool.tree(TreeParams {
             path: dir.path().display().to_string(),
             depth: 1,
+            show_hidden: false,
         });
 
         assert_eq!(result.content.len(), 2);
