@@ -1,3 +1,4 @@
+pub mod capability_cache;
 pub mod configure;
 pub mod doctor;
 pub mod gateway;

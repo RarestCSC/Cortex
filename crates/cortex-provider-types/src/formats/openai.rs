@@ -2058,7 +2058,11 @@ pub fn openai_reasoning_effort_for_endpoint(
             }
             return values
                 .iter()
-                .filter_map(|word| word.parse::<ThinkingEffort>().ok().map(|level| (level, word)))
+                .filter_map(|word| {
+                    word.parse::<ThinkingEffort>()
+                        .ok()
+                        .map(|level| (level, word))
+                })
                 .min_by_key(|(level, _)| match level {
                     ThinkingEffort::Off => 0,
                     ThinkingEffort::Low => 1,

@@ -51,6 +51,10 @@ const i18n = defineMessages({
     defaultMessage: 'A model-defined setting. Release to apply it to this chat.',
   },
   preview: { id: 'composerConfig.preview', defaultMessage: 'Preview · release to apply' },
+  endpointHint: {
+    id: 'composerConfig.endpointHint',
+    defaultMessage: 'This endpoint publishes no reasoning metadata for this model.',
+  },
 });
 
 interface ThinkingEffortControlProps {
@@ -433,6 +437,11 @@ export function ThinkingEffortControl({
               <p className="effort-hint text-xs text-text-secondary">
                 {hintFor(selectedIndex >= 0 ? (activeChoice?.value ?? '') : (selected ?? ''))}
               </p>
+              {effort.type === 'select' && effort.description && (
+                <p className="text-xs text-text-secondary" role="note" title={effort.description}>
+                  {effort.description}
+                </p>
+              )}
             </>
           )}
           <p className="text-[10px] text-text-secondary" role={previewing ? 'status' : undefined}>

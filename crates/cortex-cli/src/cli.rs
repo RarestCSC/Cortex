@@ -820,6 +820,14 @@ enum Command {
     #[command(about = "Check that your Goose setup is working")]
     Doctor {},
 
+    /// Show or clear the model capability probe cache
+    #[command(about = "Show or clear the model capability probe cache")]
+    CapabilityCache {
+        /// Delete the cache file instead of showing it
+        #[arg(long, help = "Clear the cached capability conclusions")]
+        clear: bool,
+    },
+
     /// Manage system prompts and behaviors
     #[cfg(feature = "bundled-mcp")]
     #[command(about = "Run one of the mcp servers bundled with goose")]
@@ -1385,6 +1393,7 @@ fn get_command_name(command: &Option<Command>) -> &'static str {
     match command {
         Some(Command::Configure {}) => "configure",
         Some(Command::Doctor {}) => "doctor",
+        Some(Command::CapabilityCache { .. }) => "capability-cache",
         Some(Command::Info { .. }) => "info",
         #[cfg(feature = "bundled-mcp")]
         Some(Command::Mcp { .. }) => "mcp",
@@ -2817,6 +2826,9 @@ pub async fn cli() -> anyhow::Result<()> {
         }
         Some(Command::Configure {}) => handle_configure().await,
         Some(Command::Doctor {}) => crate::commands::doctor::handle_doctor().await,
+        Some(Command::CapabilityCache { clear }) => {
+            crate::commands::capability_cache::handle_capability_cache(clear).await
+        }
         Some(Command::Info { verbose, check }) => handle_info(verbose, check).await,
         #[cfg(feature = "bundled-mcp")]
         Some(Command::Mcp { server }) => handle_mcp_command(server).await,
