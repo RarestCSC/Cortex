@@ -436,8 +436,29 @@ printf '%s\n' '{"type":"result","stats":{}}'
             item.unwrap();
         }
 
-        let args = fs::read_to_string(directory.path().join("args")).unwrap();
-        let stdin = fs::read_to_string(directory.path().join("stdin")).unwrap();
+        // The stream ends when the shim's `result` line is parsed, but the
+        // shim has only been *scheduled* the writes by then — under load the
+        // fork can still be between the writes and exit. Poll briefly instead
+        // of reading immediately, or a loaded machine turns this into a
+        // spurious ENOENT failure.
+        let read_recorded = |name: &str| -> std::io::Result<String> {
+            let path = directory.path().join(name);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            loop {
+                match fs::read_to_string(&path) {
+                    Ok(content) => return Ok(content),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        if std::time::Instant::now() >= deadline {
+                            return Err(error);
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(25));
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+        };
+        let args = read_recorded("args").unwrap();
+        let stdin = read_recorded("stdin").unwrap();
         assert!(!args.contains(SENTINEL));
         assert!(stdin.contains(SENTINEL));
         assert!(!args.lines().any(|arg| arg == "-p"));

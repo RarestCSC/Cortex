@@ -85,7 +85,7 @@
 | P2-3 | **`cargo clippy --all-targets` 跑不通的分支既有问题** | `AUDIT-2026-10-17` §6 | 不加 feature 编译错误（`agents/state_machine/tests/` 24 个）、加了撞 `E0432: unresolved import cortex::acp::transport`（`acp/mod.rs:12` 带 `#[cfg(feature = "acp-http")]`）。⚠️ 时间线：`refactor-plan` §4④（2026-10-15）曾全绿，2026-10-17 又跑不通，状态反转源自改名引入的 feature 门控 |
 | ✅ P2-4 | **真实 `~/.config/goose` 时间戳已变更** | `FIX-yi` §7.8 | **已确认修订基线（2026-10-18）**：硬边界基线改为 `2026-10-16 15:33:19.316532991 +0800`，判定为用户手工改配置、非构建回归；`AGENTS` §1.1 已更新 |
 | ✅ P2-5 | **不要用 `git stash` 做局部回退（改名未提交状态）** | `AUDIT-2026-10-17` §7、`refactor-plan` §0 | **已随新仓库失效**：改名已提交，`git stash` 恢复为正常操作；仍优先用 `git diff` / `git restore` 定点回退 |
-| P2-6 | **工作区残留 + 已知 flaky 测试** | `FIX-jia` §7.3、`FIX-bing` §8.1/§8.2 | ① `.snap.new` 已定位为 **feature 集不匹配**（快照含 `platform-apps`/`chat-recall`，基线未开）；对齐 feature 或 gate 测试后删除；② `gemini_cli` 本机负载下偶发抖动；③ `CustomProviderForm` 两个 ~5.0s 用例**已确认是 5s 预算假失败**，给用例传 `15000` 即可 |
+| ✅ P2-6 | **工作区残留 + 已知 flaky 测试** | `FIX-jia` §7.3、`FIX-bing` §8.1/§8.2 | **全部关闭**：① `.snap.new` 已删（feature 集已对齐）；② `gemini_cli` 已修（读取改 5s 轮询，2026-10-18）；③ `CustomProviderForm` 慢用例已传 `15000` |
 | ✅ P2-7 | **token 优化线** | `refactor-plan.md` §0 token 段、§5 | **第一批已上线并进正式安装包**：`tree` 加 `OUTPUT_LIMIT_BYTES=50_000` 行边界截断（+2 例回归）、`compaction.md` 改为「最短可续接摘要」。**第二批已取消**（用户 2026-10-17 决定不做）：chatrecall 逐条上限、image 缩放、缓存感知压缩。明确不在范围：缓存参数/命中、DeepSeek 原生 hit/miss、GPT-6 断点 |
 
 ---

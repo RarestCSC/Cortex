@@ -99,7 +99,7 @@ cd ui/desktop && bash scripts/check-dead-classes.sh
 | `chatgpt_codex::test_parse_jwt_claims_verified_with_issuer` | `jsonwebtoken` 无 CryptoProvider（`rust_crypto` / `aws_lc_rs` 都未开） | **测试侧已修**：补 `rustls-tls`（已验证） |
 | `providers::gcpauth` ×3 | 同上，JWT 签发/刷新需要 CryptoProvider | **测试侧已修**：补 `rustls-tls`（已验证） |
 | `ComposerModelPopover.test.tsx` | 断言面板高 210px（旧冻结高度行为） | jsdom 下 `maxHeight=520` 恒定，需更新断言。⚠️ **该测试长期未被执行，因为验证清单不含 `settings/models` 目录** |
-| `providers::gemini_cli::tests::initial_prompt_is_sent_on_stdin` | 某一轮全量跑失败过一次，单独跑 4/4 通过 | **已知 flaky**（`spawn` 子进程、本机负载），非本次引入。勿误判为回归 |
+| `providers::gemini_cli::tests::initial_prompt_is_sent_on_stdin` | 某一轮全量跑失败过一次，单独跑 4/4 通过 | ✅ **已修（2026-10-18）**：读取改为 5s 轮询（shim 写文件与退出存在竞态），见 `TECH-DEBT` §5 |
 | `CustomProviderForm.test.tsx` 的 `does not carry credentials…` / `clears secrets…` | 各耗时 ~4.4~5.0s，**默认 5s 预算顶掉**（非断言失败） | 给两个用例传 `15000`（或该文件设 `testTimeout`） |
 | ✅ `session_naming` 的 3 例新回归测试 | 历史上因 `debug/` 目录消失未运行 | **已完成**：现有 debug lib 测试二进制定点跑 3/0（`test_collect_title_candidates_*`）；无需 release profile |
 | `App.test.tsx` ×5 / `Hub.test.tsx` ×14 | mock 缺 `acpListRecentSessions` 导出 / 渲染 `Hub` 时缺 `<Router>` | 测试侧修复：补 mock 导出、包 `MemoryRouter` |
@@ -207,7 +207,7 @@ cd ui/desktop && bash scripts/check-dead-classes.sh
 | **P2** | 测试隔离漏洞修复（隔离 HOME） | 0.5 天 | 技能测试专用 |
 | ✅ P2 | `session_naming` 3 例回归补跑 | — | **已完成**：debug lib 定点 3/0 |
 | **P2** | `cargo clippy --all-targets` 跑通整理 | — | **基本已通**：新 feature 集下 `clippy --all-targets -D warnings` **exit 0**（2026-10-18 实测，仅修 1 处 bedrock 测试构造器缺新字段）。⚠️ 仅裸 `--features aws-providers` 单独跑仍有 24 个既有编译错误（缺 `scheduler` feature），与 clippy 无关 |
-| **P2** | v8 build script 的 `v8-goose-*` 文件名改名 | 0.5 天 | 依赖上游，风险待评估 |
+| **P2** | 已知 flaky：`gemini_cli` shim 偶发抖动 | — | **已修（2026-10-18）**：`args`/`stdin` 读取改为 5s 轮询（shim 写文件与进程退出有竞态，高负载下 ENOENT 假失败）；8 连跑通过 |
 | ✅ P2 | token 优化第二批（chatrecall 逐条上限 / image 缩放 / 缓存感知压缩） | — | **已取消**（用户 2026-10-17 决定不做） |
 | **暂缓** | Windows 构建 | 待定 | 用户要求等没大 bug 后再做 |
 
