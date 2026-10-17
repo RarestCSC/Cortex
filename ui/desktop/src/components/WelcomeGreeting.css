@@ -1,0 +1,35 @@
+.cortex-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+  text-align: center;
+  color: var(--color-text-primary);
+}
+
+.cortex-welcome-brand {
+  display: block;
+  width: min(280px, 53vw);
+  max-width: 100%;
+}
+
+.cortex-welcome-brand svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.cortex-welcome-text {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-wrap: balance;
+}
+
+@media (max-width: 480px) {
+  .cortex-welcome-text {
+    font-size: 18px;
+  }
+}

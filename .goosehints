@@ -1,0 +1,24 @@
+Cortex is a Rust workspace with crates under `crates/`:
+
+- `cortex`: core agent logic, providers, sessions, extensions
+- `cortex-cli`: the `cortex` binary (CLI, `serve`, recipes, schedules)
+- `cortex-providers` / `cortex-provider-types`: model provider implementations and shared wire types
+- `cortex-context-management`: conversation compaction and summarisation
+- `cortex-mcp`: bundled MCP servers
+- `cortex-sdk` / `cortex-sdk-types`: SDK bindings and protocol types
+- `cortex-agent` / `cortex-local-inference` / `cortex-download-manager` / `cortex-roaming`: agent runtime, local inference, model downloads, P2P transport
+- `cortex-test` / `cortex-test-support`: test harness and fixtures
+
+`ui/desktop` is the Electron app (TypeScript + React). It talks to the backend over ACP
+through the workspace package `@cortex/acp-client` in `ui/acp-client`.
+
+Non-trivial behaviour belongs in the `cortex` crate and is exposed to the CLI through
+`cortex-cli`. The desktop app calls the backend over ACP; do not import generated
+OpenAPI client code from `ui/desktop/src/api`.
+
+Tips:
+
+- Check unstaged changes to see what is currently being worked on.
+- Always verify `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, and run the tests
+  in the files you touched.
+- In `ui/desktop`, run `pnpm run typecheck` and the tests for the files you touched.

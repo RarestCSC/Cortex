@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Cortex
+Exec=/usr/bin/cortex %U
+Icon=/usr/share/pixmaps/cortex.png
+Terminal=false
+Type=Application
+Categories=Development;
+MimeType=x-scheme-handler/cortex;
