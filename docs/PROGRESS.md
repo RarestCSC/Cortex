@@ -192,6 +192,7 @@
 - 文件：`.github/workflows/dead-classes.yml`
 - 触发：push / PR 到 `main`，或手动
 - 运行：[39031487176](https://github.com/RarestCSC/Cortex/actions/runs/39031487176) → **success**
+- 第六轮提交 `07d51af` 的守卫运行 [39042811474](https://github.com/RarestCSC/Cortex/actions/runs/39042811474) 亦 **success**
 - 输出：`SCANNED_FILES=520 TOTAL=0 KINDS=0 FILES_AFFECTED=0`
 
 ### A 类验收的最终决定（用户 2026-10-17）
