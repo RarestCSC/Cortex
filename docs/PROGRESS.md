@@ -120,10 +120,10 @@
 ## 🔄 下一步行动建议
 
 1. **B 类测试债（已验证）**：UI 21 个、Rust 8 个全部归零；`cortex --lib` 2295/0、UI 1013/0/8、ACP 11/11。
-2. **Phase 1/2（已验证）**：`catalog_provider_id` 别名、context 回填、档位菜单（默认 Off/最低档）全部通过；`cortex-provider-types` 682/0、`cortex-providers` 272/0。
-3. **提交/推送**：17 个文件（代码 + 文档）待你确认后提交。
+2. **Phase 1/2（已验证 + 真机验收通过）**：`catalog_provider_id` 别名、context 回填、档位菜单（默认 Off/最低档）全部通过；`cortex-provider-types` 682/0、`cortex-providers` 272/0。
+3. **提交/推送**：已完成（`07d51af` + `e6c919c`，CI 守卫 success）。
 4. **产品决策**：P1-3 三态、P1-4 缓存位置/UI 清除、P1-9 G2 提示位置。
-5. **真机/装版**：P1-10 developer 角色验收。
+5. **真机/装版**：Phase 1+2 真机验收已通过（2026-10-17 晚，dev 二进制 + 隔离根）；P1-10 developer 角色验收仍需装版。
 6. **P2 技术债**：按 `TECH-DEBT.md` §5 逐步清理；Windows 构建暂缓。
 
 ---
@@ -283,6 +283,12 @@
 - `formats/openai.rs`：Off 只接受 `none/off/minimal`；默认映射 Off/最低档；菜单值过滤。
 - `response_builder.rs`：菜单按实际档位渲染；去掉 `default`；标签用实际词。
 - `model_config.rs`：不再用 `endpoint_default_effort` 作为初始档。
+
+### 真机验收（dev 二进制 + 隔离根，2026-10-17 晚）
+
+| 项 | 结论 |
+|----|------|
+| Phase 1+2 | ✅ **用户确认「通过」**：档位菜单按实际词表渲染（`gpt-6-luna` 四档含 `xhigh`、`gpt-6-astra` 含 Off、`deepseek-v4.1-flash` 单档固定、lite-gpt 走 canonical 词表）、context 按端点/别名解析。全部模型可正常切换 |
 
 ### 未做
 
