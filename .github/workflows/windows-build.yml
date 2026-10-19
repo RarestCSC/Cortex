@@ -1,0 +1,132 @@
+name: Windows build
+
+# Manual-only on purpose: this workflow must not run on Linux pushes or PRs.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    name: Build Windows x64 installer
+    runs-on: windows-latest
+    timeout-minutes: 180
+
+    env:
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: '1'
+      ELECTRON_PLATFORM: win32
+      ELECTRON_ARCH: x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '12.11.2'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.10.0'
+          cache: 'pnpm'
+          cache-dependency-path: ui/pnpm-lock.yaml
+
+      - name: Set up Rust
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.99.0 --profile minimal
+          rustup default 1.99.0
+          rustup target add x86_64-pc-windows-msvc
+
+      - name: Install NASM
+        shell: pwsh
+        run: |
+          if (-not (Get-Command nasm -ErrorAction SilentlyContinue)) {
+            choco install nasm -y --no-progress
+          }
+          "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+          cache-on-failure: true
+
+      # Windows deliberately does not build local inference (llama.cpp /
+      # candle). Keep API providers, Code Mode, keyring and the ACP server.
+      - name: Build backend
+        shell: pwsh
+        run: |
+          cargo build --locked --release -p cortex-cli --bin cortex --no-default-features --features "portable-default,code-mode,system-keyring,online-model-meta"
+
+      - name: Verify backend
+        shell: pwsh
+        run: |
+          .\target\release\cortex.exe --version
+          .\target\release\cortex.exe serve --help
+
+      - name: Stage backend for Electron
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .\ui\desktop\src\bin | Out-Null
+          Copy-Item .\target\release\cortex.exe .\ui\desktop\src\bin\cortex.exe -Force
+
+      - name: Install UI dependencies
+        working-directory: ui
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare Windows runtime files
+        working-directory: ui/desktop
+        shell: pwsh
+        run: node scripts/prepare-platform-binaries.js
+
+      - name: Build UI and Squirrel installer
+        working-directory: ui/desktop
+        shell: pwsh
+        run: |
+          pnpm run build-acp-client
+          pnpm run i18n:compile
+          pnpm exec electron-forge make --platform win32 --arch x64 --targets=@electron-forge/maker-squirrel
+
+      - name: Verify packaged backend
+        shell: pwsh
+        run: |
+          $backend = '.\ui\desktop\out\Cortex-win32-x64\resources\bin\cortex.exe'
+          if (-not (Test-Path $backend)) {
+            throw "Packaged backend missing: $backend"
+          }
+          & $backend --version
+
+      - name: Collect installer
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem -Path .\ui\desktop\out\make\squirrel.windows\x64 -Filter '*Setup.exe' |
+            Select-Object -First 1
+          if (-not $setup) {
+            throw 'Squirrel Setup.exe was not produced'
+          }
+
+          New-Item -ItemType Directory -Force -Path .\artifacts | Out-Null
+          Copy-Item $setup.FullName .\artifacts\ -Force
+
+          $hash = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($setup.Name)" | Out-File -FilePath .\artifacts\SHA256.txt -Encoding ascii
+          Get-Content .\artifacts\SHA256.txt
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: cortex-windows-x64-setup
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 30
