@@ -75,6 +75,19 @@ module.exports = {
       },
     },
     {
+      // Windows-only installer. Linux/macOS `make` runs skip this maker
+      // because it is not listed for those platforms.
+      name: '@electron-forge/maker-squirrel',
+      platforms: ['win32'],
+      config: {
+        name: 'cortex_app',
+        authors: 'Cortex',
+        description: 'Cortex App',
+        setupIcon: 'src/images/icon.ico',
+        noMsi: true,
+      },
+    },
+    {
       name: '@electron-forge/maker-deb',
       config: {
         name: 'Cortex',

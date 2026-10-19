@@ -160,6 +160,16 @@ function cleanBinDirectory(targetPlatform) {
     }
 
     const files = fs.readdirSync(srcBinDir, { withFileTypes: true });
+    const windowsExcludedFiles = new Set([
+        'cortex',
+        'goosed',
+        'jbang',
+        'node',
+        'npx',
+        'uvx',
+        'node-setup-common.sh',
+        'node-launchers.test.ts',
+    ]);
     
     files.forEach(file => {
         const filePath = path.join(srcBinDir, file.name);
@@ -176,19 +186,22 @@ function cleanBinDirectory(targetPlatform) {
                 }
             }
         } else if (targetPlatform === 'win32') {
-            // For Windows, remove macOS-specific files (keep only Windows files and common files)
-            if (!matchesPattern(file.name, windowsFiles) && !matchesPattern(file.name, ['*.db', '*.log', '.gitkeep'])) {
-                // Check if it's a macOS binary (executable without extension)
-                if (file.isFile() && !path.extname(file.name) && file.name !== '.gitkeep') {
-                    try {
-                        // Check if file is executable (likely a macOS binary)
-                        const stats = fs.statSync(filePath);
-                        if (stats.mode & parseInt('111', 8)) { // Check if any execute bit is set
-                            console.log(`Removing macOS binary: ${file.name}`);
-                            fs.unlinkSync(filePath);
-                        }
-                    } catch (err) {
-                        console.warn(`Could not check file ${file.name}:`, err.message);
+            // Windows builds must not ship POSIX-only launchers or a Linux
+            // backend binary. The POSIX executable bit is not reliable on
+            // Windows (regular files report mode 0666), so match by name.
+            const isWindowsFile = matchesPattern(file.name, windowsFiles);
+            const isCommonFile = matchesPattern(file.name, ['*.db', '*.log', '.gitkeep']);
+            if (!isWindowsFile && !isCommonFile) {
+                const isPosixOnly =
+                    windowsExcludedFiles.has(file.name) ||
+                    file.name.endsWith('.sh') ||
+                    file.name.endsWith('.test.ts');
+                if (isPosixOnly) {
+                    console.log(`Removing POSIX-only file: ${file.name}`);
+                    if (file.isDirectory()) {
+                        fs.rmSync(filePath, { recursive: true, force: true });
+                    } else {
+                        fs.unlinkSync(filePath);
                     }
                 }
             }
@@ -252,6 +265,17 @@ async function preparePlatformBinaries() {
     
     // Then clean up cross-platform files
     cleanBinDirectory(targetPlatform);
+
+    // A Windows package without the backend binary starts but cannot serve
+    // ACP, so fail early instead of producing a broken installer.
+    if (targetPlatform === 'win32') {
+        const backendBinary = path.join(srcBinDir, 'cortex.exe');
+        if (!fs.existsSync(backendBinary)) {
+            throw new Error(
+                `Windows backend binary missing: stage target\\release\\cortex.exe to ${backendBinary} before packaging`
+            );
+        }
+    }
     
     console.log('Platform binary preparation complete');
 }
