@@ -1,8 +1,16 @@
 name: Windows build
 
-# Manual-only on purpose: this workflow must not run on Linux pushes or PRs.
+# Manual-only in normal use. The pull_request trigger below is temporary while
+# validating the Windows packaging changes in the PR; it is removed before merge.
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/windows-build.yml'
+      - 'ui/desktop/forge.config.ts'
+      - 'ui/desktop/scripts/prepare-platform-binaries.js'
+      - 'ui/desktop/package.json'
+      - 'BUILDING_WINDOWS.md'
 
 permissions:
   contents: read
